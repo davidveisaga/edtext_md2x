@@ -7,11 +7,38 @@
   <link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css">
 </head>
 <body>
-  <form method="POST">
-    <div id="editor"></div>
-    <input type="hidden" name="content" id="content">
-    <button type="submit">Guardar</button>
-  </form>
+  <div style="display:flex; gap:16px; align-items:flex-start;">
+  <div style="display:flex; gap:16px;">
+    <aside id="explorer" style="width:240px; border-right:1px solid #ddd; padding-right:12px;">
+      <h3>Archivos guardados</h3>
+        <div>
+          <button id="refreshFiles">Refrescar</button>
+          <button id="newFile">Nuevo archivo</button>
+          <button id="createDir">Crear carpeta</button>
+        </div>
+        <div id="breadcrumb" style="margin-top:8px; font-size:0.95em; color:#333;"></div>
+        <ul id="fileList" style="list-style:none; padding-left:0; margin-top:8px;"></ul>
+    </aside>
+
+    <div id="splitter" title="Redimensionar explorador" style="width:12px; cursor:col-resize; background:transparent; height:500px; align-self:stretch; z-index:1000; touch-action:none; display:flex; align-items:center; justify-content:center;">
+      <div style="width:2px; height:60%; background:#c0c0c0; border-radius:2px; box-shadow:0 0 0 1px rgba(0,0,0,0.02) inset;"></div>
+    </div>
+    <div id="mainArea" style="flex:1;">
+      <form method="POST">
+        <div id="editor"></div>
+        <input type="hidden" name="content" id="content">
+        <input type="hidden" name="preview_filename" id="preview_filename">
+        <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+          <button type="submit">Vista previa</button>
+          <button type="button" id="saveFile">Guardar</button>
+          <span id="currentFile" style="margin-left:12px; color:#555">(archivo: <em>nuevo</em>)</span>
+        </div>
+        <div style="margin-top:8px;">
+          <button type="button" id="toggleExplorer">Ocultar explorador</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <!-- Toast UI Editor JS -->
   <script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
@@ -40,9 +67,332 @@
       }
     });
 
-    // Guardar Markdown en el campo oculto antes de enviar
+    // Guardar Markdown y nombre de archivo actual en campos ocultos antes de enviar
     document.querySelector("form").addEventListener("submit", () => {
       document.querySelector("#content").value = editor.getMarkdown();
+      try {
+        document.querySelector('#preview_filename').value = currentFile || '';
+      } catch(e){}
+    });
+
+    // File explorer + load/edit/save
+    let currentFile = null; // filename
+
+    function setCurrentFile(name) {
+      currentFile = name;
+      const el = document.querySelector('#currentFile');
+      if (!name) el.innerHTML = '(archivo: <em>nuevo</em>)';
+      else el.innerHTML = '(archivo: <em>' + name + '</em>)';
+    }
+
+    // currentPath is a relative path inside SAVE_FOLDER ('' = root)
+    let currentPath = '';
+
+    async function refreshFiles() {
+      const ul = document.querySelector('#fileList');
+      ul.innerHTML = '<li>Cargando...</li>';
+      try {
+        const q = currentPath ? '?path=' + encodeURIComponent(currentPath) : '';
+        const res = await fetch('/files' + q);
+        const data = await res.json();
+        if (!data.success) throw new Error(data.message || 'Error listing files');
+        ul.innerHTML = '';
+
+        // render breadcrumb
+        const bc = document.getElementById('breadcrumb');
+        bc.innerHTML = '';
+        const rootCrumb = document.createElement('span');
+        rootCrumb.style.cursor = 'pointer';
+        rootCrumb.textContent = 'root';
+        rootCrumb.addEventListener('click', () => { currentPath = ''; refreshFiles(); });
+        bc.appendChild(rootCrumb);
+        if (data.path) {
+          const parts = data.path.split('/');
+          let accum = '';
+          parts.forEach((p, idx) => {
+            const sep = document.createElement('span');
+            sep.textContent = ' / ';
+            bc.appendChild(sep);
+            const crumb = document.createElement('span');
+            crumb.style.cursor = 'pointer';
+            crumb.textContent = p;
+            accum = accum ? (accum + '/' + p) : p;
+            crumb.addEventListener('click', () => { currentPath = accum; refreshFiles(); });
+            bc.appendChild(crumb);
+          });
+        }
+
+        // show parent link if any (also keep .. for quick up)
+        if (data.parent) {
+          const li = document.createElement('li');
+          li.style.padding = '6px 4px';
+          li.style.cursor = 'pointer';
+          li.textContent = '.. (subir)';
+          li.addEventListener('click', () => { currentPath = data.parent; refreshFiles(); });
+          ul.appendChild(li);
+        }
+
+        if (data.files.length === 0) {
+          ul.innerHTML += '<li><em>No hay archivos</em></li>';
+          return;
+        }
+        data.files.forEach(f => {
+          const li = document.createElement('li');
+          li.style.padding = '6px 4px';
+          li.style.display = 'flex';
+          li.style.justifyContent = 'space-between';
+          li.style.alignItems = 'center';
+          const left = document.createElement('div');
+          left.style.cursor = 'pointer';
+          // icon on the left, name on the right
+          const icon = document.createElement('span');
+          icon.style.marginRight = '8px';
+          const nameSpan = document.createElement('span');
+          nameSpan.textContent = f.name;
+
+          if (f.type === 'dir') {
+            icon.textContent = '📁';
+            left.addEventListener('click', () => { currentPath = currentPath ? (currentPath + '/' + f.name) : f.name; refreshFiles(); });
+          } else {
+            icon.textContent = '📄';
+            left.addEventListener('click', () => loadFile((currentPath ? currentPath + '/' : '') + f.name));
+          }
+          left.appendChild(icon);
+          left.appendChild(nameSpan);
+
+          const actions = document.createElement('div');
+          actions.style.display = 'flex';
+          actions.style.gap = '6px';
+
+          const renameBtn = document.createElement('button');
+          renameBtn.textContent = 'Renombrar';
+          renameBtn.addEventListener('click', async (ev) => {
+            ev.stopPropagation();
+            const newName = prompt('Nuevo nombre para "' + f.name + '" (puedes usar ruta relativa):');
+            if (!newName) return alert('Nombre requerido');
+            const oldPath = (currentPath ? currentPath + '/' : '') + f.name;
+            try {
+              const res = await fetch('/rename', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ old: oldPath, new: newName })
+              });
+              const r = await res.json();
+              if (r.success) { alert('Renombrado a: ' + r.new); refreshFiles(); }
+              else alert('Error renombrando: ' + (r.message || JSON.stringify(r)));
+            } catch (err) { alert('Error de red: ' + err); }
+          });
+
+          const delBtn = document.createElement('button');
+          delBtn.textContent = 'Eliminar';
+          delBtn.addEventListener('click', async (ev) => {
+            ev.stopPropagation();
+            if (!confirm('Eliminar "' + f.name + '" ? Esta acción es irreversible.')) return;
+            const path = (currentPath ? currentPath + '/' : '') + f.name;
+            try {
+              const res = await fetch('/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: path })
+              });
+              const r = await res.json();
+              if (r.success) { alert('Eliminado'); refreshFiles(); }
+              else alert('Error eliminando: ' + (r.message || JSON.stringify(r)));
+            } catch (err) { alert('Error de red: ' + err); }
+          });
+
+          actions.appendChild(renameBtn);
+          actions.appendChild(delBtn);
+
+          li.appendChild(left);
+          li.appendChild(actions);
+          ul.appendChild(li);
+        });
+      } catch (err) {
+        ul.innerHTML = '<li>Error al listar archivos</li>';
+        console.error(err);
+      }
+    }
+
+    async function loadFile(name) {
+      if (!confirm('Abrir "' + name + '" para editar?')) return;
+      try {
+        const res = await fetch('/file?name=' + encodeURIComponent(name));
+        const data = await res.json();
+        if (!data.success) throw new Error(data.message || 'Error loading file');
+        editor.setMarkdown(data.content);
+        setCurrentFile(data.name);
+      } catch (err) {
+        alert('Error al cargar archivo: ' + err);
+      }
+    }
+
+    document.querySelector('#refreshFiles').addEventListener('click', refreshFiles);
+    document.querySelector('#newFile').addEventListener('click', () => {
+      if (!confirm('Crear nuevo documento (se perderán cambios no guardados)?')) return;
+      editor.setMarkdown('');
+      setCurrentFile(null);
+    });
+
+    document.querySelector('#createDir').addEventListener('click', async () => {
+      const name = prompt('Nombre de la nueva carpeta (sin /):');
+      if (!name) { alert('Nombre requerido'); return; }
+      try {
+        const res = await fetch('/mkdir', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dirname: name, parent: currentPath })
+        });
+        const result = await res.json();
+        if (result.success) {
+          alert('Carpeta creada: ' + (result.path || name));
+          // navigate into new dir
+          currentPath = currentPath ? (currentPath + '/' + name) : name;
+          refreshFiles();
+        } else {
+          alert('Error al crear carpeta: ' + (result.message || JSON.stringify(result)));
+        }
+      } catch (err) {
+        alert('Error de red al crear carpeta: ' + err);
+      }
+    });
+
+    // Guardar archivo: si currentFile existe, lo sobreescribe; si no, pide nombre
+    async function saveMarkdownFile() {
+      const md = editor.getMarkdown();
+      let filename = currentFile;
+      if (!filename) {
+        filename = prompt('Nombre de archivo (ej: nota.md) — requerido para guardar');
+        if (!filename) { alert('Nombre requerido'); return; }
+      }
+
+      // if user provided a simple name and currentPath is set, save inside that folder
+      const saveName = (currentPath ? (currentPath + '/' + filename) : filename);
+      const body = { content: md, filename: saveName };
+      try {
+        const res = await fetch('/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const result = await res.json();
+        if (result.success) {
+          alert('Archivo guardado en: ' + result.path);
+          setCurrentFile(filename);
+          refreshFiles();
+        } else {
+          alert('Error al guardar: ' + (result.message || JSON.stringify(result)));
+        }
+      } catch (err) {
+        alert('Error de red al guardar archivo: ' + err);
+      }
+    }
+
+    document.querySelector('#saveFile').addEventListener('click', saveMarkdownFile);
+
+    // Inicializar
+    setCurrentFile(null);
+    refreshFiles();
+
+    // Si la URL tiene ?file=..., cargar ese archivo automáticamente al abrir el editor
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const f = params.get('file');
+      if (f) {
+        // fetch sin confirmación
+        (async () => {
+          try {
+            const res = await fetch('/file?name=' + encodeURIComponent(f));
+            const data = await res.json();
+            if (data.success) {
+              editor.setMarkdown(data.content);
+              setCurrentFile(data.name);
+            }
+          } catch (e) {
+            console.error('No se pudo cargar archivo desde query param', e);
+          }
+        })();
+      }
+    } catch(e){}
+
+    // Toggle explorer visibility
+    const explorer = document.getElementById('explorer');
+    const toggleBtn = document.getElementById('toggleExplorer');
+    const mainArea = document.getElementById('mainArea');
+    // splitter must be obtained before setExplorerVisible uses it
+    const splitter = document.getElementById('splitter');
+    // restore width from previous session
+    try {
+      const w = localStorage.getItem('explorerWidth');
+      if (w) document.getElementById('explorer').style.width = w + 'px';
+    } catch(e){}
+
+    function setExplorerVisible(visible) {
+      if (visible) {
+        explorer.style.display = '';
+        splitter.style.display = '';
+        toggleBtn.textContent = 'Ocultar explorador';
+      } else {
+        explorer.style.display = 'none';
+        splitter.style.display = 'none';
+        toggleBtn.textContent = 'Mostrar explorador';
+      }
+      try { localStorage.setItem('explorerVisible', visible ? '1' : '0'); } catch(e){}
+    }
+
+    toggleBtn.addEventListener('click', () => {
+      const isVisible = explorer.style.display !== 'none';
+      setExplorerVisible(!isVisible);
+    });
+
+    // initialize from localStorage (default visible)
+    try {
+      const v = localStorage.getItem('explorerVisible');
+      if (v === '0') setExplorerVisible(false);
+      else setExplorerVisible(true);
+    } catch(e) { setExplorerVisible(true); }
+
+    // Splitter (resizable explorer width)
+    // Use Pointer events for more reliable dragging across browsers
+    let startX = 0;
+    let startWidth = 0;
+    let pointerId = null;
+
+    function onPointerMove(e) {
+      if (pointerId === null) return;
+      const dx = e.clientX - startX;
+      let newWidth = Math.round(startWidth + dx);
+      const minW = 120;
+      const maxW = Math.max(300, window.innerWidth - 300);
+      if (newWidth < minW) newWidth = minW;
+      if (newWidth > maxW) newWidth = maxW;
+      document.getElementById('explorer').style.width = newWidth + 'px';
+    }
+
+    function onPointerUp(e) {
+      if (pointerId === null) return;
+      try { splitter.releasePointerCapture(pointerId); } catch(_) {}
+      pointerId = null;
+      document.body.style.cursor = '';
+      try {
+        const w = Math.round(document.getElementById('explorer').getBoundingClientRect().width);
+        localStorage.setItem('explorerWidth', w);
+      } catch(e){}
+      document.removeEventListener('pointermove', onPointerMove);
+      document.removeEventListener('pointerup', onPointerUp);
+    }
+
+    splitter.addEventListener('pointerdown', (e) => {
+      // only left button
+      if (e.button !== 0) return;
+      pointerId = e.pointerId;
+      startX = e.clientX;
+      startWidth = document.getElementById('explorer').getBoundingClientRect().width;
+      document.body.style.cursor = 'col-resize';
+      try { splitter.setPointerCapture(pointerId); } catch(_) {}
+      document.addEventListener('pointermove', onPointerMove);
+      document.addEventListener('pointerup', onPointerUp);
+      e.preventDefault();
     });
   </script>
 </body>

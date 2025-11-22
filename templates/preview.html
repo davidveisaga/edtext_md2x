@@ -7,6 +7,10 @@
 <body>
   <h1>Contenido renderizado</h1>
   <div>{{ html|safe }}</div>
+  {% if preview_q %}
+  <a href="/?file={{ preview_q }}">Volver al editor (volver al archivo)</a>
+  {% else %}
   <a href="/">Volver al editor</a>
+  {% endif %}
 </body>
 </html>
