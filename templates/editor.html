@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Toast UI Editor + Flask</title>
+  <!-- Toast UI Editor CSS -->
+  <link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css">
+</head>
+<body>
+  <form method="POST">
+    <div id="editor"></div>
+    <input type="hidden" name="content" id="content">
+    <button type="submit">Guardar</button>
+  </form>
+
+  <!-- Toast UI Editor JS -->
+  <script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
+  <script>
+    const editor = new toastui.Editor({
+      el: document.querySelector('#editor'),
+      height: '500px',
+      initialEditType: 'wysiwyg',
+      previewStyle: 'vertical',
+      hooks: {
+        addImageBlobHook: async (blob, callback) => {
+          const formData = new FormData();
+          formData.append("file", blob);
+
+          const response = await fetch("/upload_image", {
+            method: "POST",
+            body: formData
+          });
+          const result = await response.json();
+          if (result.success) {
+            callback(result.url, blob.name);
+          } else {
+            alert("Error al subir imagen: " + result.message);
+          }
+        }
+      }
+    });
+
+    // Guardar Markdown en el campo oculto antes de enviar
+    document.querySelector("form").addEventListener("submit", () => {
+      document.querySelector("#content").value = editor.getMarkdown();
+    });
+  </script>
+</body>
+</html>
