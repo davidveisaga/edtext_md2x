@@ -35,7 +35,8 @@ def index():
     if request.method == "POST":
         md_content = request.form.get("content", "")
         preview_filename = request.form.get('preview_filename', '')
-        html = markdown(md_content, extensions=["extra", "fenced_code", "toc"])
+        print(f"DEBUG: Markdown recibido desde editor:\n{md_content[:500]}\n...")
+        html = markdown(md_content, extensions=["extra", "fenced_code", "toc", "pymdownx.mark"])
         preview_q = urllib.parse.quote(preview_filename) if preview_filename else ''
         return render_template("preview.html", html=html, preview_q=preview_q, preview_name=preview_filename)
     return render_template("editor.html")

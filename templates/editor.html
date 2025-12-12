@@ -3,8 +3,27 @@
 <head>
   <meta charset="utf-8">
   <title>Toast UI Editor + Flask</title>
-  <!-- Toast UI Editor CSS -->
+  <!-- Toast UI Editor CSS (CDN) -->
   <link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css">
+  <!-- Local Color Picker + Color Syntax plugin CSS -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/tui-color-syntax/tui-color-picker.min.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/tui-color-syntax/toastui-editor-plugin-color-syntax.min.css') }}">
+  <style>
+    /* Estilo para resaltar texto envuelto en ==texto== en el preview de Toast UI */
+    .toastui-editor-contents mark,
+    .toastui-editor-contents [data-annotation="mark"] {
+      background-color: #ffff00;
+      padding: 2px 4px;
+      border-radius: 2px;
+    }
+    
+    /* También aplicar en modo markdown preview */
+    .toastui-editor-md-preview mark {
+      background-color: #ffff00;
+      padding: 2px 4px;
+      border-radius: 2px;
+    }
+  </style>
 </head>
 <body>
   <div style="display:flex; gap:16px; align-items:flex-start;">
@@ -40,40 +59,159 @@
     </div>
   </div>
 
-  <!-- Toast UI Editor JS -->
+  <!-- Toast UI Editor JS (CDN) -->
   <script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
+  <!-- Local Color Picker + Color Syntax plugin JS -->
+  <script src="{{ url_for('static', filename='vendor/tui-color-syntax/tui-color-picker.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='vendor/tui-color-syntax/toastui-editor-plugin-color-syntax.min.js') }}"></script>
   <script>
-    const editor = new toastui.Editor({
-      el: document.querySelector('#editor'),
-      height: '500px',
-      initialEditType: 'wysiwyg',
-      previewStyle: 'vertical',
-      hooks: {
-        addImageBlobHook: async (blob, callback) => {
-          const formData = new FormData();
-          formData.append("file", blob);
-
-          const response = await fetch("/upload_image", {
-            method: "POST",
-            body: formData
-          });
-          const result = await response.json();
-          if (result.success) {
-            callback(result.url, blob.name);
-          } else {
-            alert("Error al subir imagen: " + result.message);
-          }
-        }
-      }
-    });
-
-    // Guardar Markdown y nombre de archivo actual en campos ocultos antes de enviar
-    document.querySelector("form").addEventListener("submit", () => {
-      document.querySelector("#content").value = editor.getMarkdown();
+    // Verificar que Toast UI se cargó
+    console.log('Toast UI cargado:', !!window.toastui);
+  </script>
+  <script>
+    function startEditor() {
       try {
-        document.querySelector('#preview_filename').value = currentFile || '';
-      } catch(e){}
-    });
+        if (!(window.toastui && toastui.Editor)) {
+          throw new Error('toastui.Editor no disponible');
+        }
+
+      let colorPlugin = null;
+      try {
+        // Toast UI color syntax plugin se registra como toastui.Editor.plugin.colorSyntax
+        if (toastui.Editor.plugin && toastui.Editor.plugin.colorSyntax) {
+          colorPlugin = toastui.Editor.plugin.colorSyntax;
+        }
+      } catch (e) {
+        // Plugin no disponible
+      }
+
+      const editorConfig = {
+        el: document.querySelector('#editor'),
+        height: '500px',
+        initialEditType: 'wysiwyg',
+        previewStyle: 'vertical',
+        toolbar: [
+          'heading',
+          'bold',
+          'italic',
+          'strike',
+          'hr',
+          'quote',
+          'ul',
+          'ol',
+          'task',
+          'indent',
+          'outdent',
+          'table',
+          'image',
+          'link',
+          'code',
+          'codeblock',
+          'scrollSync'
+        ]
+      };
+
+      // Agregar el plugin si está disponible
+      if (colorPlugin) {
+        editorConfig.plugins = [colorPlugin];
+      }
+
+      const editor = new toastui.Editor(editorConfig);
+
+      // Hook para convertir ==texto== a <mark>texto</mark> en el preview
+      editor.eventEmitter.listen('beforePreviewRender', (html) => {
+        // Reemplazar ==texto== con <mark>texto</mark>
+        return html.replace(/==([^=]+)==/g, '<mark>$1</mark>');
+      });
+
+      // Agregar el botón al toolbar (después de que se renderice)
+      setTimeout(() => {
+        const toolbar = document.querySelector('.toastui-editor-defaultUI-toolbar');
+        if (toolbar) {
+          // Crear un botón con el mismo estilo que los otros botones del toolbar
+          const toolbarItem = document.createElement('button');
+          toolbarItem.type = 'button';
+          toolbarItem.className = 'toastui-editor-toolbar-icons';
+          toolbarItem.innerHTML = '<span style="font-size:18px;">🖍️</span>';
+          toolbarItem.title = 'Resaltar texto (Highlight)';
+          toolbarItem.style.padding = '4px 8px';
+          toolbarItem.style.cursor = 'pointer';
+          toolbarItem.style.border = 'none';
+          toolbarItem.style.backgroundColor = 'transparent';
+          toolbarItem.style.margin = '0 2px';
+          
+          toolbarItem.addEventListener('click', (e) => {
+            e.preventDefault();
+            
+            try {
+              // Intentar obtener el texto seleccionado
+              const selection = window.getSelection();
+              let selectedText = selection.toString().trim();
+              
+              if (!selectedText) {
+                selectedText = prompt('Selecciona texto en el editor o escribe lo que deseas resaltar:');
+              }
+              
+              if (!selectedText || selectedText.trim() === '') {
+                alert('Por favor, selecciona o proporciona el texto a resaltar');
+                return;
+              }
+              
+              const highlightedText = `==${selectedText}==`;
+              
+              // Reemplazar en el markdown completo
+              const currentMarkdown = editor.getMarkdown();
+              
+              // Si el texto seleccionado está en el markdown, reemplazarlo
+              if (currentMarkdown.includes(selectedText)) {
+                const newMarkdown = currentMarkdown.replace(selectedText, highlightedText);
+                editor.setMarkdown(newMarkdown);
+              } else {
+                // Si no está, agregarlo al final
+                const newMarkdown = currentMarkdown + '\n' + highlightedText;
+                editor.setMarkdown(newMarkdown);
+              }
+              
+              console.log('✓ Texto resaltado:', highlightedText);
+            } catch (err) {
+              console.error('Error al resaltar:', err);
+              alert('Error: ' + err.message);
+            }
+          });
+          
+          // Agregar al final del toolbar
+          toolbar.appendChild(toolbarItem);
+        }
+      }, 500);
+
+      // Configurar hook para subir imágenes
+      editor.addHook('addImageBlobHook', async (blob, callback) => {
+        const formData = new FormData();
+        formData.append("file", blob);
+
+        const response = await fetch("/upload_image", {
+          method: "POST",
+          body: formData
+        });
+        const result = await response.json();
+        if (result.success) {
+          callback(result.url, blob.name);
+        } else {
+          alert("Error al subir imagen: " + result.message);
+        }
+      });
+
+        // Guardar Markdown y nombre de archivo actual en campos ocultos antes de enviar
+        const form = document.querySelector("form");
+        if (form) {
+          form.addEventListener("submit", (e) => {
+            const md = editor.getMarkdown();
+            document.querySelector("#content").value = md;
+            try {
+              document.querySelector('#preview_filename').value = currentFile || '';
+            } catch(ex){}
+          });
+        }
 
     // File explorer + load/edit/save
     let currentFile = null; // filename
@@ -227,14 +365,14 @@
       }
     }
 
-    document.querySelector('#refreshFiles').addEventListener('click', refreshFiles);
-    document.querySelector('#newFile').addEventListener('click', () => {
-      if (!confirm('Crear nuevo documento (se perderán cambios no guardados)?')) return;
-      editor.setMarkdown('');
-      setCurrentFile(null);
-    });
+        document.querySelector('#refreshFiles').addEventListener('click', refreshFiles);
+        document.querySelector('#newFile').addEventListener('click', () => {
+          if (!confirm('Crear nuevo documento (se perderán cambios no guardados)?')) return;
+          editor.setMarkdown('');
+          setCurrentFile(null);
+        });
 
-    document.querySelector('#createDir').addEventListener('click', async () => {
+        document.querySelector('#createDir').addEventListener('click', async () => {
       const name = prompt('Nombre de la nueva carpeta (sin /):');
       if (!name) { alert('Nombre requerido'); return; }
       try {
@@ -288,11 +426,11 @@
       }
     }
 
-    document.querySelector('#saveFile').addEventListener('click', saveMarkdownFile);
+        document.querySelector('#saveFile').addEventListener('click', saveMarkdownFile);
 
     // Inicializar
-    setCurrentFile(null);
-    refreshFiles();
+        setCurrentFile(null);
+        refreshFiles();
 
     // Si la URL tiene ?file=..., cargar ese archivo automáticamente al abrir el editor
     try {
@@ -315,12 +453,12 @@
       }
     } catch(e){}
 
-    // Toggle explorer visibility
-    const explorer = document.getElementById('explorer');
-    const toggleBtn = document.getElementById('toggleExplorer');
-    const mainArea = document.getElementById('mainArea');
-    // splitter must be obtained before setExplorerVisible uses it
-    const splitter = document.getElementById('splitter');
+        // Toggle explorer visibility
+        const explorer = document.getElementById('explorer');
+        const toggleBtn = document.getElementById('toggleExplorer');
+        const mainArea = document.getElementById('mainArea');
+        // splitter must be obtained before setExplorerVisible uses it
+        const splitter = document.getElementById('splitter');
     // restore width from previous session
     try {
       const w = localStorage.getItem('explorerWidth');
@@ -340,25 +478,25 @@
       try { localStorage.setItem('explorerVisible', visible ? '1' : '0'); } catch(e){}
     }
 
-    toggleBtn.addEventListener('click', () => {
+        toggleBtn.addEventListener('click', () => {
       const isVisible = explorer.style.display !== 'none';
       setExplorerVisible(!isVisible);
     });
 
     // initialize from localStorage (default visible)
-    try {
-      const v = localStorage.getItem('explorerVisible');
-      if (v === '0') setExplorerVisible(false);
-      else setExplorerVisible(true);
-    } catch(e) { setExplorerVisible(true); }
+        try {
+          const v = localStorage.getItem('explorerVisible');
+          if (v === '0') setExplorerVisible(false);
+          else setExplorerVisible(true);
+        } catch(e) { setExplorerVisible(true); }
 
     // Splitter (resizable explorer width)
     // Use Pointer events for more reliable dragging across browsers
-    let startX = 0;
-    let startWidth = 0;
-    let pointerId = null;
+        let startX = 0;
+        let startWidth = 0;
+        let pointerId = null;
 
-    function onPointerMove(e) {
+        function onPointerMove(e) {
       if (pointerId === null) return;
       const dx = e.clientX - startX;
       let newWidth = Math.round(startWidth + dx);
@@ -369,7 +507,7 @@
       document.getElementById('explorer').style.width = newWidth + 'px';
     }
 
-    function onPointerUp(e) {
+        function onPointerUp(e) {
       if (pointerId === null) return;
       try { splitter.releasePointerCapture(pointerId); } catch(_) {}
       pointerId = null;
@@ -382,7 +520,7 @@
       document.removeEventListener('pointerup', onPointerUp);
     }
 
-    splitter.addEventListener('pointerdown', (e) => {
+        splitter.addEventListener('pointerdown', (e) => {
       // only left button
       if (e.button !== 0) return;
       pointerId = e.pointerId;
@@ -391,9 +529,21 @@
       document.body.style.cursor = 'col-resize';
       try { splitter.setPointerCapture(pointerId); } catch(_) {}
       document.addEventListener('pointermove', onPointerMove);
-      document.addEventListener('pointerup', onPointerUp);
-      e.preventDefault();
-    });
+          document.addEventListener('pointerup', onPointerUp);
+          e.preventDefault();
+        });
+      } catch (err) {
+        console.error('No se pudo inicializar Toast UI Editor', err);
+        alert('No se pudo cargar Toast UI Editor. Revisa la consola o la conexión.');
+      }
+    }
+
+    // Iniciar después de que el DOM esté listo
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', startEditor);
+    } else {
+      startEditor();
+    }
   </script>
 </body>
 </html>
