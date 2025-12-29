@@ -9,19 +9,16 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/tui-color-syntax/tui-color-picker.min.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/tui-color-syntax/toastui-editor-plugin-color-syntax.min.css') }}">
   <style>
-    /* Estilo para resaltar texto envuelto en ==texto== en el preview de Toast UI */
+    /* Estilo para resaltar texto con <mark> en todos los modos del editor */
     .toastui-editor-contents mark,
-    .toastui-editor-contents [data-annotation="mark"] {
-      background-color: #ffff00;
-      padding: 2px 4px;
-      border-radius: 2px;
-    }
-    
-    /* También aplicar en modo markdown preview */
-    .toastui-editor-md-preview mark {
-      background-color: #ffff00;
-      padding: 2px 4px;
-      border-radius: 2px;
+    .toastui-editor-contents [data-annotation="mark"],
+    .toastui-editor-md-preview mark,
+    .ProseMirror mark,
+    .toastui-editor-ww-container mark,
+    mark {
+      background-color: #ffff00 !important;
+      padding: 2px 4px !important;
+      border-radius: 2px !important;
     }
   </style>
 </head>
@@ -89,7 +86,23 @@
         el: document.querySelector('#editor'),
         height: '500px',
         initialEditType: 'wysiwyg',
-        previewStyle: 'vertical',
+        previewStyle: 'tab',
+        usageStatistics: false,
+        customHTMLSanitizer: (html) => {
+          // No sanitizar, permitir todo el HTML (incluyendo <mark>)
+          return html;
+        },
+        customHTMLRenderer: {
+          htmlInline: {
+            mark(node, context) {
+              return [
+                { type: 'openTag', tagName: 'mark', outerNewLine: false },
+                { type: 'html', content: node.literal },
+                { type: 'closeTag', tagName: 'mark', outerNewLine: false }
+              ];
+            }
+          }
+        },
         toolbar: [
           'heading',
           'bold',
@@ -106,8 +119,7 @@
           'image',
           'link',
           'code',
-          'codeblock',
-          'scrollSync'
+          'codeblock'
         ]
       };
 
@@ -144,35 +156,48 @@
             e.preventDefault();
             
             try {
-              // Intentar obtener el texto seleccionado
-              const selection = window.getSelection();
-              let selectedText = selection.toString().trim();
-              
-              if (!selectedText) {
-                selectedText = prompt('Selecciona texto en el editor o escribe lo que deseas resaltar:');
-              }
-              
-              if (!selectedText || selectedText.trim() === '') {
-                alert('Por favor, selecciona o proporciona el texto a resaltar');
+              // Verificar que estamos en modo WYSIWYG
+              if (!editor.isWysiwygMode()) {
+                editor.changeMode('wysiwyg');
+                setTimeout(() => toolbarItem.click(), 100);
                 return;
               }
               
-              const highlightedText = `==${selectedText}==`;
-              
-              // Reemplazar en el markdown completo
-              const currentMarkdown = editor.getMarkdown();
-              
-              // Si el texto seleccionado está en el markdown, reemplazarlo
-              if (currentMarkdown.includes(selectedText)) {
-                const newMarkdown = currentMarkdown.replace(selectedText, highlightedText);
-                editor.setMarkdown(newMarkdown);
-              } else {
-                // Si no está, agregarlo al final
-                const newMarkdown = currentMarkdown + '\n' + highlightedText;
-                editor.setMarkdown(newMarkdown);
+              // Obtener la selección actual
+              const selection = window.getSelection();
+              if (!selection.rangeCount) {
+                alert('Por favor, selecciona texto en el editor primero');
+                return;
               }
               
-              console.log('✓ Texto resaltado:', highlightedText);
+              const range = selection.getRangeAt(0);
+              const selectedText = range.toString().trim();
+              
+              if (!selectedText) {
+                alert('Por favor, selecciona texto en el editor primero');
+                return;
+              }
+              
+              // Crear el elemento mark con atributo para que Toast UI lo preserve
+              const mark = document.createElement('mark');
+              mark.setAttribute('data-tomark-pass', '');
+              mark.textContent = selectedText;
+              
+              // Eliminar el contenido seleccionado e insertar el mark
+              range.deleteContents();
+              range.insertNode(mark);
+              
+              // Agregar un espacio después para evitar que se pegue con el siguiente texto
+              const space = document.createTextNode(' ');
+              range.setStartAfter(mark);
+              range.insertNode(space);
+              
+              // Colapsar la selección después del espacio
+              range.setStartAfter(space);
+              range.collapse(true);
+              selection.removeAllRanges();
+              selection.addRange(range);
+              
             } catch (err) {
               console.error('Error al resaltar:', err);
               alert('Error: ' + err.message);
@@ -359,6 +384,7 @@
         const data = await res.json();
         if (!data.success) throw new Error(data.message || 'Error loading file');
         editor.setMarkdown(data.content);
+        editor.changeMode('wysiwyg');
         setCurrentFile(data.name);
       } catch (err) {
         alert('Error al cargar archivo: ' + err);
@@ -369,6 +395,7 @@
         document.querySelector('#newFile').addEventListener('click', () => {
           if (!confirm('Crear nuevo documento (se perderán cambios no guardados)?')) return;
           editor.setMarkdown('');
+          editor.changeMode('wysiwyg');
           setCurrentFile(null);
         });
 
@@ -444,6 +471,7 @@
             const data = await res.json();
             if (data.success) {
               editor.setMarkdown(data.content);
+              editor.changeMode('wysiwyg');
               setCurrentFile(data.name);
             }
           } catch (e) {
