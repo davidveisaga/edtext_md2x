@@ -9,16 +9,50 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/tui-color-syntax/tui-color-picker.min.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/tui-color-syntax/toastui-editor-plugin-color-syntax.min.css') }}">
   <style>
-    /* Estilo para resaltar texto con <mark> en todos los modos del editor */
-    .toastui-editor-contents mark,
-    .toastui-editor-contents [data-annotation="mark"],
-    .toastui-editor-md-preview mark,
-    .ProseMirror mark,
-    .toastui-editor-ww-container mark,
-    mark {
-      background-color: #ffff00 !important;
+    /* Estilos base para resaltado de texto */
+    .text-highlight {
       padding: 2px 4px !important;
       border-radius: 2px !important;
+      font-style: normal !important;
+    }
+    
+    /* Colores de resaltado usando clases CSS */
+    .text-highlight.hl-yellow { background-color: #ffff00 !important; }
+    .text-highlight.hl-green { background-color: #90EE90 !important; }
+    .text-highlight.hl-blue { background-color: #ADD8E6 !important; }
+    .text-highlight.hl-pink { background-color: #FFB6C1 !important; }
+    .text-highlight.hl-orange { background-color: #FFD580 !important; }
+    .text-highlight.hl-purple { background-color: #DDA0DD !important; }
+    
+    /* Menú de colores */
+    .highlight-color-menu {
+      display: none;
+      position: absolute;
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      padding: 8px;
+      z-index: 1000;
+      gap: 4px;
+      grid-template-columns: repeat(3, 1fr);
+    }
+    
+    .highlight-color-menu.show {
+      display: grid;
+    }
+    
+    .color-option {
+      width: 32px;
+      height: 32px;
+      border-radius: 4px;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: border-color 0.2s;
+    }
+    
+    .color-option:hover {
+      border-color: #333;
     }
   </style>
 </head>
@@ -130,6 +164,71 @@
 
       const editor = new toastui.Editor(editorConfig);
 
+      // Función para aplicar colores a todos los marks con data-color
+      function applyMarkColors() {
+        setTimeout(() => {
+          // Buscar en toda la página, no solo en selectores específicos
+          const allMarks = document.querySelectorAll('mark[data-color]');
+          const colorMap = {
+            'yellow': '#ffff00',
+            'green': '#90EE90',
+            'blue': '#ADD8E6',
+            'pink': '#FFB6C1',
+            'orange': '#FFD580',
+            'purple': '#DDA0DD'
+          };
+          
+          console.log('Buscando marks... encontrados:', allMarks.length);
+          
+          allMarks.forEach(m => {
+            const color = m.getAttribute('data-color');
+            console.log('Mark encontrado con color:', color, 'Elemento:', m);
+            if (color && colorMap[color]) {
+              m.style.backgroundColor = colorMap[color];
+              m.style.padding = '2px 4px';
+              m.style.borderRadius = '2px';
+              console.log('Estilo aplicado:', m.style.backgroundColor);
+            }
+          });
+          console.log('Colores aplicados a', allMarks.length, 'elementos mark');
+        }, 200); // Aumentado el delay
+      }
+
+      // MutationObserver para detectar cambios y reaplicar estilos
+      const observer = new MutationObserver(() => {
+        const marks = document.querySelectorAll('mark[data-color]');
+        const colorMap = {
+          'yellow': '#ffff00',
+          'green': '#90EE90',
+          'blue': '#ADD8E6',
+          'pink': '#FFB6C1',
+          'orange': '#FFD580',
+          'purple': '#DDA0DD'
+        };
+        marks.forEach(m => {
+          const color = m.getAttribute('data-color');
+          if (color && colorMap[color] && m.style.backgroundColor !== colorMap[color]) {
+            m.style.backgroundColor = colorMap[color];
+            m.style.padding = '2px 4px';
+            m.style.borderRadius = '2px';
+          }
+        });
+      });
+      
+      // Observar cambios en el editor
+      setTimeout(() => {
+        const editorEl = document.querySelector('#editor');
+        if (editorEl) {
+          observer.observe(editorEl, { 
+            childList: true, 
+            subtree: true, 
+            attributes: true,
+            attributeFilter: ['style']
+          });
+          console.log('MutationObserver activado para mantener colores');
+        }
+      }, 500);
+
       // Hook para convertir ==texto== a <mark>texto</mark> en el preview
       editor.eventEmitter.listen('beforePreviewRender', (html) => {
         // Reemplazar ==texto== con <mark>texto</mark>
@@ -140,7 +239,12 @@
       setTimeout(() => {
         const toolbar = document.querySelector('.toastui-editor-defaultUI-toolbar');
         if (toolbar) {
-          // Crear un botón con el mismo estilo que los otros botones del toolbar
+          // Crear contenedor para botón y menú
+          const highlightContainer = document.createElement('div');
+          highlightContainer.style.position = 'relative';
+          highlightContainer.style.display = 'inline-block';
+          
+          // Crear el botón de resaltado
           const toolbarItem = document.createElement('button');
           toolbarItem.type = 'button';
           toolbarItem.className = 'toastui-editor-toolbar-icons';
@@ -152,14 +256,54 @@
           toolbarItem.style.backgroundColor = 'transparent';
           toolbarItem.style.margin = '0 2px';
           
+          // Crear menú de colores
+          const colorMenu = document.createElement('div');
+          colorMenu.className = 'highlight-color-menu';
+          
+          const colors = [
+            { name: 'yellow', color: '#ffff00', emoji: '🟨' },
+            { name: 'green', color: '#90EE90', emoji: '🟩' },
+            { name: 'blue', color: '#ADD8E6', emoji: '🟦' },
+            { name: 'pink', color: '#FFB6C1', emoji: '🟪' },
+            { name: 'orange', color: '#FFD580', emoji: '🟧' },
+            { name: 'purple', color: '#DDA0DD', emoji: '🟫' }
+          ];
+          
+          colors.forEach(c => {
+            const btn = document.createElement('button');
+            btn.className = 'color-option';
+            btn.style.backgroundColor = c.color;
+            btn.title = c.name;
+            btn.textContent = c.emoji;
+            btn.dataset.color = c.name;
+            btn.dataset.colorHex = c.color;
+            colorMenu.appendChild(btn);
+          });
+          
+          highlightContainer.appendChild(toolbarItem);
+          highlightContainer.appendChild(colorMenu);
+          
+          // Mostrar/ocultar menú al hacer clic en el botón
           toolbarItem.addEventListener('click', (e) => {
             e.preventDefault();
-            
+            e.stopPropagation();
+            colorMenu.classList.toggle('show');
+          });
+          
+          // Cerrar menú al hacer clic fuera
+          document.addEventListener('click', (e) => {
+            if (!highlightContainer.contains(e.target)) {
+              colorMenu.classList.remove('show');
+            }
+          });
+          
+          // Función para aplicar resaltado con color
+          const applyHighlight = (colorName, colorHex) => {
             try {
               // Verificar que estamos en modo WYSIWYG
               if (!editor.isWysiwygMode()) {
                 editor.changeMode('wysiwyg');
-                setTimeout(() => toolbarItem.click(), 100);
+                setTimeout(() => applyHighlight(colorName, colorHex), 100);
                 return;
               }
               
@@ -167,6 +311,7 @@
               const selection = window.getSelection();
               if (!selection.rangeCount) {
                 alert('Por favor, selecciona texto en el editor primero');
+                colorMenu.classList.remove('show');
                 return;
               }
               
@@ -175,21 +320,27 @@
               
               if (!selectedText) {
                 alert('Por favor, selecciona texto en el editor primero');
+                colorMenu.classList.remove('show');
                 return;
               }
               
-              // Crear el elemento mark con atributo para que Toast UI lo preserve
-              const mark = document.createElement('mark');
-              mark.setAttribute('data-tomark-pass', '');
-              mark.textContent = selectedText;
+              // Crear span con clases CSS que Toast UI preserve
+              const span = document.createElement('span');
+              span.className = 'text-highlight hl-' + colorName;
+              span.style.cssText = `background-color: ${colorHex}; padding: 2px 4px; border-radius: 2px;`;
+              span.textContent = selectedText;
               
-              // Eliminar el contenido seleccionado e insertar el mark
+              console.log('Creando span con color:', colorName, 'Hex:', colorHex, 'Clases:', span.className);
+              
+              // Eliminar el contenido seleccionado e insertar el span
               range.deleteContents();
-              range.insertNode(mark);
+              range.insertNode(span);
+              
+              console.log('Elemento insertado:', span, 'con clases:', span.getAttribute('class'));
               
               // Agregar un espacio después para evitar que se pegue con el siguiente texto
               const space = document.createTextNode(' ');
-              range.setStartAfter(mark);
+              range.setStartAfter(span);
               range.insertNode(space);
               
               // Colapsar la selección después del espacio
@@ -198,14 +349,28 @@
               selection.removeAllRanges();
               selection.addRange(range);
               
+              // Cerrar el menú
+              colorMenu.classList.remove('show');
+              
             } catch (err) {
               console.error('Error al resaltar:', err);
               alert('Error: ' + err.message);
             }
+          };
+          
+          // Agregar evento a cada botón de color
+          colorMenu.querySelectorAll('.color-option').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const color = btn.dataset.color;
+              const colorHex = btn.dataset.colorHex;
+              applyHighlight(color, colorHex);
+            });
           });
           
           // Agregar al final del toolbar
-          toolbar.appendChild(toolbarItem);
+          toolbar.appendChild(highlightContainer);
         }
       }, 500);
 
@@ -385,6 +550,7 @@
         if (!data.success) throw new Error(data.message || 'Error loading file');
         editor.setMarkdown(data.content);
         editor.changeMode('wysiwyg');
+        applyMarkColors();
         setCurrentFile(data.name);
       } catch (err) {
         alert('Error al cargar archivo: ' + err);
@@ -396,6 +562,7 @@
           if (!confirm('Crear nuevo documento (se perderán cambios no guardados)?')) return;
           editor.setMarkdown('');
           editor.changeMode('wysiwyg');
+          applyMarkColors();
           setCurrentFile(null);
         });
 
@@ -472,6 +639,7 @@
             if (data.success) {
               editor.setMarkdown(data.content);
               editor.changeMode('wysiwyg');
+              applyMarkColors();
               setCurrentFile(data.name);
             }
           } catch (e) {
