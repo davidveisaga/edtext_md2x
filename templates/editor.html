@@ -241,32 +241,26 @@
         if (toolbar) {
           // Crear contenedor para botón y menú
           const highlightContainer = document.createElement('div');
-          highlightContainer.style.position = 'relative';
-          highlightContainer.style.display = 'inline-block';
+          highlightContainer.style.cssText = 'position: relative; display: inline-block;';
           
           // Crear el botón de resaltado
           const toolbarItem = document.createElement('button');
           toolbarItem.type = 'button';
           toolbarItem.className = 'toastui-editor-toolbar-icons';
-          toolbarItem.innerHTML = '<span style="font-size:18px;">🖍️</span>';
+          toolbarItem.innerHTML = '<span style="font-size:16px; display:inline-block; background:yellow; padding:2px 4px; border-radius:2px; font-weight:bold; color:#000;">A</span>';
           toolbarItem.title = 'Resaltar texto (Highlight)';
-          toolbarItem.style.padding = '4px 8px';
-          toolbarItem.style.cursor = 'pointer';
-          toolbarItem.style.border = 'none';
-          toolbarItem.style.backgroundColor = 'transparent';
-          toolbarItem.style.margin = '0 2px';
           
           // Crear menú de colores
           const colorMenu = document.createElement('div');
           colorMenu.className = 'highlight-color-menu';
           
           const colors = [
-            { name: 'yellow', color: '#ffff00', emoji: '🟨' },
-            { name: 'green', color: '#90EE90', emoji: '🟩' },
-            { name: 'blue', color: '#ADD8E6', emoji: '🟦' },
-            { name: 'pink', color: '#FFB6C1', emoji: '🟪' },
-            { name: 'orange', color: '#FFD580', emoji: '🟧' },
-            { name: 'purple', color: '#DDA0DD', emoji: '🟫' }
+            { name: 'yellow', color: '#ffff00' },
+            { name: 'green', color: '#90EE90' },
+            { name: 'blue', color: '#ADD8E6' },
+            { name: 'pink', color: '#FFB6C1' },
+            { name: 'orange', color: '#FFD580' },
+            { name: 'purple', color: '#DDA0DD' }
           ];
           
           colors.forEach(c => {
@@ -274,7 +268,6 @@
             btn.className = 'color-option';
             btn.style.backgroundColor = c.color;
             btn.title = c.name;
-            btn.textContent = c.emoji;
             btn.dataset.color = c.name;
             btn.dataset.colorHex = c.color;
             colorMenu.appendChild(btn);
