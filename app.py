@@ -105,6 +105,23 @@ def download_odt():
         italic_style.addElement(TextProperties(fontstyle="italic"))
         doc.styles.addElement(italic_style)
         
+        # Highlight color styles
+        highlight_styles = {}
+        color_map = {
+            'yellow': '#ffff00',
+            'green': '#90EE90',
+            'blue': '#ADD8E6',
+            'pink': '#FFB6C1',
+            'orange': '#FFD580',
+            'purple': '#DDA0DD'
+        }
+        
+        for color_name, color_hex in color_map.items():
+            style = Style(name=f"Highlight{color_name.capitalize()}", family="text")
+            style.addElement(TextProperties(backgroundcolor=color_hex))
+            doc.automaticstyles.addElement(style)
+            highlight_styles[color_name] = style
+        
         # Style for images
         img_style = Style(name="ImageStyle", family="graphic")
         img_style.addElement(GraphicProperties(
@@ -117,11 +134,12 @@ def download_odt():
         from html.parser import HTMLParser
         
         class HTMLtoODT(HTMLParser):
-            def __init__(self, document, image_folder, img_style):
+            def __init__(self, document, image_folder, img_style, highlight_styles):
                 super().__init__()
                 self.doc = document
                 self.image_folder = image_folder
                 self.img_style = img_style
+                self.highlight_styles = highlight_styles
                 self.current_para = None
                 self.style_stack = []
                 self.image_counter = 0
@@ -136,6 +154,24 @@ def download_odt():
                     self.style_stack.append('bold')
                 elif tag == 'em' or tag == 'i':
                     self.style_stack.append('italic')
+                elif tag == 'span':
+                    # Handle span tags with highlight classes
+                    attrs_dict = dict(attrs)
+                    class_attr = attrs_dict.get('class', '')
+                    
+                    # Check if it's a highlight span
+                    if 'text-highlight' in class_attr:
+                        # Extract color from class like "text-highlight hl-yellow"
+                        for color in ['yellow', 'green', 'blue', 'pink', 'orange', 'purple']:
+                            if f'hl-{color}' in class_attr:
+                                self.style_stack.append(f'highlight-{color}')
+                                break
+                elif tag == 'mark':
+                    # Handle highlight/mark tags
+                    attrs_dict = dict(attrs)
+                    color = attrs_dict.get('data-color', '')
+                    if color:
+                        self.style_stack.append(f'highlight-{color}')
                 elif tag == 'br':
                     if self.current_para is None:
                         self.current_para = P()
@@ -225,8 +261,12 @@ def download_odt():
                     if self.current_para is not None:
                         self.doc.text.addElement(self.current_para)
                         self.current_para = None
-                elif tag in ['strong', 'b', 'em', 'i']:
+                elif tag in ['strong', 'b', 'em', 'i', 'mark']:
                     if self.style_stack:
+                        self.style_stack.pop()
+                elif tag == 'span':
+                    # Check if we pushed a highlight style for this span
+                    if self.style_stack and self.style_stack[-1].startswith('highlight-'):
                         self.style_stack.pop()
             
             def handle_data(self, data):
@@ -235,13 +275,26 @@ def download_odt():
                         self.current_para = P()
                     
                     if self.style_stack:
-                        span = Span(stylename=self.style_stack[-1].capitalize())
-                        span.addText(data)
-                        self.current_para.addElement(span)
+                        style_name = self.style_stack[-1]
+                        
+                        # Handle highlight styles
+                        if style_name.startswith('highlight-'):
+                            color = style_name.replace('highlight-', '')
+                            if color in self.highlight_styles:
+                                span = Span(stylename=self.highlight_styles[color])
+                                span.addText(data)
+                                self.current_para.addElement(span)
+                            else:
+                                self.current_para.addText(data)
+                        else:
+                            # Handle bold/italic
+                            span = Span(stylename=style_name.capitalize())
+                            span.addText(data)
+                            self.current_para.addElement(span)
                     else:
                         self.current_para.addText(data)
         
-        parser = HTMLtoODT(doc, app.config["IMAGE_FOLDER"], img_style)
+        parser = HTMLtoODT(doc, app.config["IMAGE_FOLDER"], img_style, highlight_styles)
         parser.feed(html_content)
         
         # Save to temporary file
