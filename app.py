@@ -1,10 +1,11 @@
-from flask import Flask, render_template, request, jsonify, url_for
+from flask import Flask, render_template, request, jsonify, url_for, send_file
 import urllib.parse
 from markdown import markdown
 from werkzeug.utils import secure_filename
 import os
 from datetime import datetime
 import shutil
+import tempfile
 
 
 def sanitize_relative_path(rel_path: str) -> str:
@@ -47,6 +48,237 @@ def serve_image(filename):
     """Serve images from the IMAGE_FOLDER directory."""
     from flask import send_from_directory
     return send_from_directory(app.config["IMAGE_FOLDER"], filename)
+
+@app.route("/download_odt", methods=["POST"])
+def download_odt():
+    """Convert markdown file to ODT format and download it."""
+    from odf.opendocument import OpenDocumentText
+    from odf.style import Style, TextProperties, ParagraphProperties, GraphicProperties
+    from odf.text import P, H, Span
+    from odf.draw import Frame, Image
+    import re
+    from urllib.parse import unquote, urlparse
+    
+    data = request.get_json() or {}
+    filename = data.get("filename")
+    
+    if not filename:
+        return jsonify({"success": False, "message": "No filename provided"}), 400
+    
+    # Sanitize and get file path
+    rel = sanitize_relative_path(filename)
+    if not rel:
+        return jsonify({"success": False, "message": "Invalid filename"}), 400
+    
+    save_folder = app.config["SAVE_FOLDER"]
+    md_path = os.path.join(save_folder, *rel.split('/'))
+    
+    # Security check
+    try:
+        real_save_folder = os.path.realpath(save_folder)
+        real_md_path = os.path.realpath(md_path)
+        if not os.path.commonpath([real_save_folder, real_md_path]) == real_save_folder:
+            return jsonify({"success": False, "message": "Invalid file path"}), 400
+    except Exception:
+        return jsonify({"success": False, "message": "Invalid file path"}), 400
+    
+    if not os.path.exists(md_path):
+        return jsonify({"success": False, "message": "File not found"}), 404
+    
+    try:
+        # Read markdown content
+        with open(md_path, 'r', encoding='utf-8') as f:
+            md_content = f.read()
+        
+        # Convert markdown to HTML
+        html_content = markdown(md_content, extensions=["extra", "fenced_code", "toc"])
+        
+        # Create ODT document
+        doc = OpenDocumentText()
+        
+        # Define styles
+        bold_style = Style(name="Bold", family="text")
+        bold_style.addElement(TextProperties(fontweight="bold"))
+        doc.styles.addElement(bold_style)
+        
+        italic_style = Style(name="Italic", family="text")
+        italic_style.addElement(TextProperties(fontstyle="italic"))
+        doc.styles.addElement(italic_style)
+        
+        # Style for images
+        img_style = Style(name="ImageStyle", family="graphic")
+        img_style.addElement(GraphicProperties(
+            horizontalpos="center",
+            horizontalrel="paragraph"
+        ))
+        doc.automaticstyles.addElement(img_style)
+        
+        # Parse HTML and convert to ODT
+        from html.parser import HTMLParser
+        
+        class HTMLtoODT(HTMLParser):
+            def __init__(self, document, image_folder, img_style):
+                super().__init__()
+                self.doc = document
+                self.image_folder = image_folder
+                self.img_style = img_style
+                self.current_para = None
+                self.style_stack = []
+                self.image_counter = 0
+                
+            def handle_starttag(self, tag, attrs):
+                if tag in ['p', 'div']:
+                    self.current_para = P()
+                elif tag in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+                    level = int(tag[1])
+                    self.current_para = H(outlinelevel=level)
+                elif tag == 'strong' or tag == 'b':
+                    self.style_stack.append('bold')
+                elif tag == 'em' or tag == 'i':
+                    self.style_stack.append('italic')
+                elif tag == 'br':
+                    if self.current_para is None:
+                        self.current_para = P()
+                    self.doc.text.addElement(self.current_para)
+                    self.current_para = P()
+                elif tag == 'img':
+                    # Handle images
+                    attrs_dict = dict(attrs)
+                    img_src = attrs_dict.get('src', '')
+                    
+                    if img_src:
+                        # Close current paragraph if exists
+                        if self.current_para is not None:
+                            self.doc.text.addElement(self.current_para)
+                            self.current_para = None
+                        
+                        # Add image to document
+                        self.add_image(img_src)
+                        
+                        # Start new paragraph
+                        self.current_para = P()
+            
+            def add_image(self, img_src):
+                """Add image to ODT document"""
+                try:
+                    # Parse image URL
+                    parsed = urlparse(img_src)
+                    
+                    # Determine image file path
+                    img_path = None
+                    if parsed.path.startswith('/images/'):
+                        # Image from /images/ route
+                        img_filename = unquote(parsed.path.split('/images/')[-1])
+                        img_path = os.path.join(self.image_folder, img_filename)
+                    elif parsed.scheme in ['http', 'https']:
+                        # External URL - skip for now
+                        return
+                    else:
+                        # Relative or absolute path
+                        img_filename = unquote(parsed.path.lstrip('/'))
+                        img_path = os.path.join(self.image_folder, img_filename)
+                    
+                    if img_path and os.path.exists(img_path):
+                        # Get image dimensions using PIL
+                        from PIL import Image as PILImage
+                        with PILImage.open(img_path) as pil_img:
+                            width_px, height_px = pil_img.size
+                        
+                        # Calculate size in inches maintaining aspect ratio
+                        # Max width: 6 inches (roughly A4 page width minus margins)
+                        max_width_in = 6.0
+                        dpi = 96  # Standard screen DPI
+                        
+                        width_in = width_px / dpi
+                        height_in = height_px / dpi
+                        
+                        # Scale down if image is too wide
+                        if width_in > max_width_in:
+                            scale = max_width_in / width_in
+                            width_in = max_width_in
+                            height_in = height_in * scale
+                        
+                        # Get image extension
+                        _, ext = os.path.splitext(img_path)
+                        ext = ext.lstrip('.')
+                        
+                        # Add image to document
+                        self.image_counter += 1
+                        img_name = f"Pictures/Image{self.image_counter}.{ext}"
+                        href = self.doc.addPicture(img_path)
+                        
+                        # Create frame and image elements with correct dimensions
+                        frame = Frame(width=f"{width_in}in", height=f"{height_in}in", stylename=self.img_style, anchortype="paragraph")
+                        image = Image(href=href)
+                        frame.addElement(image)
+                        
+                        # Add to paragraph
+                        para = P()
+                        para.addElement(frame)
+                        self.doc.text.addElement(para)
+                        
+                except Exception as e:
+                    print(f"Error adding image {img_src}: {e}")
+            
+            def handle_endtag(self, tag):
+                if tag in ['p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+                    if self.current_para is not None:
+                        self.doc.text.addElement(self.current_para)
+                        self.current_para = None
+                elif tag in ['strong', 'b', 'em', 'i']:
+                    if self.style_stack:
+                        self.style_stack.pop()
+            
+            def handle_data(self, data):
+                if data.strip():
+                    if self.current_para is None:
+                        self.current_para = P()
+                    
+                    if self.style_stack:
+                        span = Span(stylename=self.style_stack[-1].capitalize())
+                        span.addText(data)
+                        self.current_para.addElement(span)
+                    else:
+                        self.current_para.addText(data)
+        
+        parser = HTMLtoODT(doc, app.config["IMAGE_FOLDER"], img_style)
+        parser.feed(html_content)
+        
+        # Save to temporary file
+        with tempfile.NamedTemporaryFile(mode='wb', suffix='.odt', delete=False) as tmp:
+            odt_path = tmp.name
+        
+        doc.save(odt_path)
+        
+        # Generate ODT filename
+        base_name = os.path.splitext(os.path.basename(filename))[0]
+        odt_filename = f"{base_name}.odt"
+        
+        # Send file and delete after sending
+        response = send_file(
+            odt_path,
+            as_attachment=True,
+            download_name=odt_filename,
+            mimetype='application/vnd.oasis.opendocument.text'
+        )
+        
+        # Schedule file deletion after response
+        @response.call_on_close
+        def cleanup():
+            try:
+                os.unlink(odt_path)
+            except Exception:
+                pass
+        
+        return response
+        
+    except Exception as e:
+        if 'odt_path' in locals() and os.path.exists(odt_path):
+            try:
+                os.unlink(odt_path)
+            except:
+                pass
+        return jsonify({"success": False, "message": f"Error: {str(e)}"}), 500
 
 @app.route("/upload_image", methods=["POST"])
 def upload_image():

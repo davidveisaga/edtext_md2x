@@ -65,6 +65,7 @@
           <button id="refreshFiles">Refrescar</button>
           <button id="newFile">Nuevo archivo</button>
           <button id="createDir">Crear carpeta</button>
+          <button id="downloadOdt" title="Descargar el archivo actual como ODT">Descargar ODT</button>
         </div>
         <div id="breadcrumb" style="margin-top:8px; font-size:0.95em; color:#333;"></div>
         <ul id="fileList" style="list-style:none; padding-left:0; margin-top:8px;"></ul>
@@ -581,6 +582,40 @@
         alert('Error de red al crear carpeta: ' + err);
       }
     });
+
+        document.querySelector('#downloadOdt').addEventListener('click', async () => {
+          if (!currentFile) {
+            alert('Primero debes guardar y seleccionar un archivo');
+            return;
+          }
+          
+          try {
+            const res = await fetch('/download_odt', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ filename: currentFile })
+            });
+            
+            if (!res.ok) {
+              const error = await res.json();
+              alert('Error: ' + (error.message || 'No se pudo generar el ODT'));
+              return;
+            }
+            
+            // Download the file
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = currentFile.replace(/\.md$/i, '.odt');
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+          } catch (err) {
+            alert('Error al descargar ODT: ' + err);
+          }
+        });
 
     // Guardar archivo: si currentFile existe, lo sobreescribe; si no, pide nombre
     async function saveMarkdownFile() {
