@@ -26,7 +26,8 @@ def sanitize_relative_path(rel_path: str) -> str:
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "dev"
-app.config["UPLOAD_FOLDER"] = os.path.join("static", "uploads")
+# Folder where images will be saved
+app.config["IMAGE_FOLDER"] = os.path.expanduser("~/docs/imagenes")
 # Folder where generated files will be saved. Default to /home/usuario/docs
 app.config["SAVE_FOLDER"] = os.environ.get("SAVE_FOLDER", "/home/davidveisaga/docs")
 
@@ -41,6 +42,12 @@ def index():
         return render_template("preview.html", html=html, preview_q=preview_q, preview_name=preview_filename)
     return render_template("editor.html")
 
+@app.route("/images/<path:filename>")
+def serve_image(filename):
+    """Serve images from the IMAGE_FOLDER directory."""
+    from flask import send_from_directory
+    return send_from_directory(app.config["IMAGE_FOLDER"], filename)
+
 @app.route("/upload_image", methods=["POST"])
 def upload_image():
     if "file" not in request.files:
@@ -50,10 +57,20 @@ def upload_image():
     if file.filename == "":
         return jsonify({"success": 0, "message": "No selected file"})
     
-    filepath = os.path.join(app.config["UPLOAD_FOLDER"], file.filename)
+    # Generar nombre único para cada imagen
+    original_filename = secure_filename(file.filename)
+    name, ext = os.path.splitext(original_filename)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+    unique_filename = f"{name}_{timestamp}{ext}"
+    
+    # Asegurar que la carpeta de imágenes existe
+    image_folder = app.config["IMAGE_FOLDER"]
+    os.makedirs(image_folder, exist_ok=True)
+    
+    filepath = os.path.join(image_folder, unique_filename)
     file.save(filepath)
 
-    file_url = url_for("static", filename=f"uploads/{file.filename}")
+    file_url = url_for("serve_image", filename=unique_filename)
     return jsonify({"success": 1, "message": "Upload success", "url": file_url})
 
 
@@ -306,5 +323,5 @@ def well_known_probe(filename: str):
     return ('', 204)
 
 if __name__ == "__main__":
-    os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+    os.makedirs(app.config["IMAGE_FOLDER"], exist_ok=True)
     app.run(debug=True)
