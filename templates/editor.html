@@ -372,6 +372,10 @@
       editor.addHook('addImageBlobHook', async (blob, callback) => {
         const formData = new FormData();
         formData.append("file", blob);
+        // Enviar el nombre del archivo actual si existe
+        if (currentFile) {
+          formData.append("current_filename", currentFile);
+        }
 
         const response = await fetch("/upload_image", {
           method: "POST",
@@ -622,8 +626,20 @@
       const md = editor.getMarkdown();
       let filename = currentFile;
       if (!filename) {
-        filename = prompt('Nombre de archivo (ej: nota.md) — requerido para guardar');
+        // Generar sugerencia de nombre con formato yymmdd
+        const now = new Date();
+        const yy = String(now.getFullYear()).slice(-2);
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        const suggestedName = `${yy}${mm}${dd}`;
+        
+        filename = prompt('Nombre de archivo (ej: nota.md) — requerido para guardar', suggestedName);
         if (!filename) { alert('Nombre requerido'); return; }
+        
+        // Agregar extensión .md si no tiene ninguna extensión
+        if (!filename.includes('.')) {
+          filename = filename + '.md';
+        }
       }
 
       // if user provided a simple name and currentPath is set, save inside that folder

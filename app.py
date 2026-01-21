@@ -342,17 +342,37 @@ def upload_image():
     if file.filename == "":
         return jsonify({"success": 0, "message": "No selected file"})
     
-    # Generar nombre único para cada imagen
-    original_filename = secure_filename(file.filename)
-    name, ext = os.path.splitext(original_filename)
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
-    unique_filename = f"{name}_{timestamp}{ext}"
+    # Obtener el nombre del archivo actual del editor (si existe)
+    current_filename = request.form.get("current_filename", "")
     
-    # Asegurar que la carpeta de imágenes existe
+    # Generar nombre para la imagen
+    original_filename = secure_filename(file.filename)
+    _, ext = os.path.splitext(original_filename)
+    if not ext:
+        ext = ".png"  # extensión por defecto para imágenes del portapapeles
+    
     image_folder = app.config["IMAGE_FOLDER"]
     os.makedirs(image_folder, exist_ok=True)
     
-    filepath = os.path.join(image_folder, unique_filename)
+    if current_filename:
+        # Usar el nombre del archivo actual como base
+        base_name = os.path.splitext(current_filename)[0]
+        base_name = secure_filename(base_name)
+        
+        # Encontrar el siguiente número disponible
+        counter = 1
+        while True:
+            unique_filename = f"{base_name}{counter:02d}{ext}"
+            filepath = os.path.join(image_folder, unique_filename)
+            if not os.path.exists(filepath):
+                break
+            counter += 1
+    else:
+        # Si no hay archivo actual, usar timestamp como antes
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+        unique_filename = f"image_{timestamp}{ext}"
+        filepath = os.path.join(image_folder, unique_filename)
+    
     file.save(filepath)
 
     file_url = url_for("serve_image", filename=unique_filename)
