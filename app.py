@@ -6,6 +6,8 @@ import os
 from datetime import datetime
 import shutil
 import tempfile
+import glob
+import re
 
 
 def sanitize_relative_path(rel_path: str) -> str:
@@ -568,6 +570,23 @@ def delete_entry():
         if os.path.isdir(target):
             shutil.rmtree(target)
         else:
+            # Si es un archivo .md, borrar también sus imágenes asociadas
+            if target.endswith('.md'):
+                base_name = os.path.splitext(os.path.basename(target))[0]
+                image_folder = app.config.get("IMAGE_FOLDER")
+                
+                if image_folder and os.path.exists(image_folder):
+                    # Buscar imágenes con el patrón: basename01.ext, basename02.ext, etc.
+                    pattern = os.path.join(image_folder, f"{base_name}[0-9][0-9].*")
+                    image_files = glob.glob(pattern)
+                    
+                    # Borrar cada imagen encontrada
+                    for img_path in image_files:
+                        try:
+                            os.remove(img_path)
+                        except Exception:
+                            pass  # Continuar aunque falle el borrado de alguna imagen
+            
             os.remove(target)
     except Exception as e:
         return jsonify({"success": False, "message": f"Error deleting: {e}"}), 500
