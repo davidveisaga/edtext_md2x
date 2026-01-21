@@ -1,0 +1,57 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pdb
+*.egg-info/
+*.egg
+*.log
+
+# --- Entorno virtual ---
+venv/
+env/
+ENV/
+.venv/
+*.env
+
+# --- Configuración local ---
+instance/
+*.sqlite3
+*.db
+
+# --- Archivos de entorno y secretos ---
+.env
+*.pem
+*.crt
+*.key
+
+# --- Archivos temporales ---
+*.swp
+*.swo
+*.bak
+*.tmp
+*.cache/
+*.coverage
+.coverage.*
+.cache/
+nosetests.xml
+coverage.xml
+*.mo
+*.pot
+
+# --- IDEs ---
+.vscode/
+.idea/
+*.iml
+
+# --- Distribución / build ---
+dist/
+build/
+*.spec
+
+# --- Otros ---
+.DS_Store
+Thumbs.db
+# Excluir solo los uploads, no toda la carpeta static
+static/uploads/
