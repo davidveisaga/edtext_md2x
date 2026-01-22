@@ -236,6 +236,37 @@
         return html.replace(/==([^=]+)==/g, '<mark>$1</mark>');
       });
 
+      // Funcionalidad Ctrl+clic para abrir enlaces en nueva pestaña
+      setTimeout(() => {
+        const editorEl = document.querySelector('#editor');
+        if (editorEl) {
+          editorEl.addEventListener('click', (e) => {
+            // Verificar si se presionó Ctrl (o Cmd en Mac)
+            if (e.ctrlKey || e.metaKey) {
+              // Buscar si el elemento clickeado o algún padre es un enlace
+              let target = e.target;
+              let link = null;
+              
+              // Subir por el árbol DOM hasta encontrar un enlace o llegar al límite
+              for (let i = 0; i < 5 && target; i++) {
+                if (target.tagName === 'A' && target.href) {
+                  link = target;
+                  break;
+                }
+                target = target.parentElement;
+              }
+              
+              if (link) {
+                e.preventDefault();
+                e.stopPropagation();
+                window.open(link.href, '_blank');
+              }
+            }
+          });
+          console.log('Ctrl+clic en enlaces habilitado');
+        }
+      }, 500);
+
       // Agregar el botón al toolbar (después de que se renderice)
       setTimeout(() => {
         const toolbar = document.querySelector('.toastui-editor-defaultUI-toolbar');
