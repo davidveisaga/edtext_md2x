@@ -24,6 +24,20 @@
     .text-highlight.hl-orange { background-color: #FFD580 !important; }
     .text-highlight.hl-purple { background-color: #DDA0DD !important; }
     
+    /* Estilos para enlaces PDF */
+    a[href*=".pdf"],
+    a[href^="/pdf/"] {
+      color: #0066cc !important;
+      text-decoration: underline !important;
+      cursor: pointer !important;
+    }
+    
+    a[href*=".pdf"]:hover,
+    a[href^="/pdf/"]:hover {
+      color: #004499 !important;
+      background-color: #f0f8ff !important;
+    }
+    
     /* Menú de colores */
     .highlight-color-menu {
       display: none;
@@ -241,29 +255,149 @@
         const editorEl = document.querySelector('#editor');
         if (editorEl) {
           editorEl.addEventListener('click', (e) => {
-            // Verificar si se presionó Ctrl (o Cmd en Mac)
-            if (e.ctrlKey || e.metaKey) {
-              // Buscar si el elemento clickeado o algún padre es un enlace
-              let target = e.target;
-              let link = null;
+            let target = e.target;
+            
+            // Buscar si el elemento clickeado o algún padre tiene data-pdf-path
+            for (let i = 0; i < 5 && target; i++) {
+              const pdfPath = target.getAttribute && target.getAttribute('data-pdf-path');
               
-              // Subir por el árbol DOM hasta encontrar un enlace o llegar al límite
-              for (let i = 0; i < 5 && target; i++) {
-                if (target.tagName === 'A' && target.href) {
-                  link = target;
-                  break;
-                }
-                target = target.parentElement;
-              }
-              
-              if (link) {
+              if (pdfPath) {
                 e.preventDefault();
                 e.stopPropagation();
-                window.open(link.href, '_blank');
+                
+                // Abrir PDF directamente con URL transparente
+                const pdfUrl = '/pdf_absolute/' + pdfPath;
+                window.open(pdfUrl, '_blank');
+                return;
+              }
+              
+              target = target.parentElement;
+            }
+            
+            // Ctrl+clic para enlaces normales
+            if (e.ctrlKey || e.metaKey) {
+              target = e.target;
+              for (let i = 0; i < 5 && target; i++) {
+                if (target.tagName === 'A' && target.href && !target.href.startsWith('#')) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  window.open(target.href, '_blank');
+                  return;
+                }
+                target = target.parentElement;
               }
             }
           });
           console.log('Ctrl+clic en enlaces habilitado');
+          
+          // Interceptar evento de paste para detectar URLs de PDF
+          // Usar capture: true para interceptar antes que Toast UI
+          editorEl.addEventListener('paste', (e) => {
+            const pastedText = e.clipboardData.getData('text');
+            
+            // Detectar si es una URL file:/// con PDF
+            const fileUrlMatch = pastedText.match(/file:\/\/\/([A-Za-z]:\/[^\s]+\.pdf)/i);
+            // Detectar si es una URL HTTP/HTTPS con PDF
+            const httpUrlMatch = pastedText.match(/(https?:\/\/[^\s]+\.pdf)/i);
+            
+            if (fileUrlMatch) {
+              e.preventDefault();
+              e.stopPropagation();
+              e.stopImmediatePropagation();
+              
+              // Decodificar la URL
+              const encodedPath = fileUrlMatch[1];
+              const decodedPath = decodeURIComponent(encodedPath);
+              
+              // Codificar la ruta en base64 para pasarla de forma segura
+              const base64Path = btoa(decodedPath);
+              
+              // Usar setTimeout para asegurar que se ejecute después del ciclo de eventos
+              setTimeout(() => {
+                if (editor.isWysiwygMode()) {
+                  // En modo WYSIWYG, insertar HTML directamente
+                  const selection = window.getSelection();
+                  if (selection.rangeCount > 0) {
+                    const range = selection.getRangeAt(0);
+                    range.deleteContents();
+                    
+                    // Crear span con estilo de enlace para PDFs locales
+                    const link = document.createElement('span');
+                    link.setAttribute('data-pdf-path', base64Path);
+                    link.setAttribute('data-pdf-display', decodedPath);
+                    link.setAttribute('role', 'link');
+                    link.style.color = '#0066cc';
+                    link.style.textDecoration = 'underline';
+                    link.style.cursor = 'pointer';
+                    link.textContent = decodedPath;
+                    
+                    range.insertNode(link);
+                    
+                    // Agregar espacio después del enlace
+                    const space = document.createTextNode(' ');
+                    range.setStartAfter(link);
+                    range.insertNode(space);
+                    
+                    // Mover cursor después del espacio
+                    range.setStartAfter(space);
+                    range.collapse(true);
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                  }
+                } else {
+                  // En modo Markdown, insertar sintaxis de enlace
+                  const mdLink = `[${decodedPath}](#pdf-${base64Path})`;
+                  editor.insertText(mdLink);
+                }
+                
+                console.log('Enlace PDF local insertado:', decodedPath);
+              }, 0);
+            } else if (httpUrlMatch) {
+              e.preventDefault();
+              e.stopPropagation();
+              e.stopImmediatePropagation();
+              
+              const pdfUrl = httpUrlMatch[1];
+              
+              // Usar setTimeout para asegurar que se ejecute después del ciclo de eventos
+              setTimeout(() => {
+                if (editor.isWysiwygMode()) {
+                  const selection = window.getSelection();
+                  if (selection.rangeCount > 0) {
+                    const range = selection.getRangeAt(0);
+                    range.deleteContents();
+                    
+                    // Crear enlace <a> normal para URLs HTTP/HTTPS
+                    const link = document.createElement('a');
+                    link.href = pdfUrl;
+                    link.target = '_blank';
+                    link.style.color = '#0066cc';
+                    link.style.textDecoration = 'underline';
+                    link.textContent = pdfUrl;
+                    
+                    range.insertNode(link);
+                    
+                    // Agregar espacio después del enlace
+                    const space = document.createTextNode(' ');
+                    range.setStartAfter(link);
+                    range.insertNode(space);
+                    
+                    // Mover cursor después del espacio
+                    range.setStartAfter(space);
+                    range.collapse(true);
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                  }
+                } else {
+                  // En modo Markdown, insertar sintaxis de enlace
+                  const mdLink = `[${pdfUrl}](${pdfUrl})`;
+                  editor.insertText(mdLink);
+                }
+                
+                console.log('Enlace PDF HTTP insertado:', pdfUrl);
+              }, 0);
+            }
+          }, true); // true = usar capture phase
         }
       }, 500);
 

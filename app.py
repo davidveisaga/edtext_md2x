@@ -51,6 +51,90 @@ def serve_image(filename):
     from flask import send_from_directory
     return send_from_directory(app.config["IMAGE_FOLDER"], filename)
 
+@app.route("/pdf/<path:filename>")
+def serve_pdf(filename):
+    """Serve PDF files from the SAVE_FOLDER directory."""
+    from flask import send_from_directory
+    # Sanitize the path
+    rel = sanitize_relative_path(filename)
+    if not rel:
+        return "Invalid path", 400
+    
+    save_folder = app.config["SAVE_FOLDER"]
+    pdf_path = os.path.join(save_folder, *rel.split('/'))
+    
+    # Security check
+    try:
+        real_save_folder = os.path.realpath(save_folder)
+        real_pdf_path = os.path.realpath(pdf_path)
+        if not os.path.commonpath([real_save_folder, real_pdf_path]) == real_save_folder:
+            return "Invalid file path", 400
+    except Exception:
+        return "Invalid file path", 400
+    
+    if not os.path.exists(pdf_path):
+        return "File not found", 404
+    
+    # Get the directory and filename
+    pdf_dir = os.path.dirname(pdf_path)
+    pdf_filename = os.path.basename(pdf_path)
+    
+    return send_from_directory(pdf_dir, pdf_filename)
+
+@app.route("/pdf_absolute/<path:encoded_path>")
+def serve_pdf_absolute(encoded_path):
+    """Serve PDF files from absolute paths (with security checks)."""
+    from flask import send_from_directory
+    import base64
+    import platform
+    import re
+    
+    # Decode the base64 encoded path
+    try:
+        decoded_path = base64.b64decode(encoded_path).decode('utf-8')
+    except Exception:
+        return jsonify({"success": False, "message": "Invalid path encoding"}), 400
+    
+    # Convertir ruta de Windows a WSL si estamos en Linux
+    normalized_path = decoded_path
+    
+    if platform.system() == 'Linux':
+        # Detectar si es una ruta de Windows (C:/, D:/, etc.)
+        windows_path_match = re.match(r'^([A-Za-z]):/(.*)$', decoded_path.replace('\\', '/'))
+        if windows_path_match:
+            drive_letter = windows_path_match.group(1).lower()
+            path_rest = windows_path_match.group(2)
+            # Convertir a ruta WSL: C:/Users/... -> /mnt/c/Users/...
+            normalized_path = f"/mnt/{drive_letter}/{path_rest}"
+    elif platform.system() == 'Windows':
+        # En Windows, convertir / a \
+        normalized_path = decoded_path.replace('/', '\\')
+    
+    pdf_path = os.path.abspath(os.path.normpath(normalized_path))
+    
+    # Security checks
+    if not os.path.exists(pdf_path):
+        return jsonify({"success": False, "message": f"File not found"}), 404
+    
+    if not os.path.isfile(pdf_path):
+        return jsonify({"success": False, "message": "Not a file"}), 400
+    
+    if not pdf_path.lower().endswith('.pdf'):
+        return jsonify({"success": False, "message": "Not a PDF file"}), 400
+    
+    # Get the directory and filename
+    pdf_dir = os.path.dirname(pdf_path)
+    pdf_filename = os.path.basename(pdf_path)
+    
+    print(f"DEBUG: Sirviendo archivo: {pdf_filename} desde {pdf_dir}")
+    
+    try:
+        return send_from_directory(pdf_dir, pdf_filename)
+    except Exception as e:
+        print(f"DEBUG: Error sirviendo archivo: {e}")
+        return jsonify({"success": False, "message": str(e)}), 500
+        return jsonify({"success": False, "message": str(e)}), 500
+
 @app.route("/download_odt", methods=["POST"])
 def download_odt():
     """Convert markdown file to ODT format and download it."""
@@ -58,12 +142,9 @@ def download_odt():
     from odf.style import Style, TextProperties, ParagraphProperties, GraphicProperties
     from odf.text import P, H, Span
     from odf.draw import Frame, Image
-    import re
-    from urllib.parse import unquote, urlparse
-    
-    data = request.get_json() or {}
-    filename = data.get("filename")
-    
+    try:
+        return send_from_directory(pdf_dir, pdf_filename)
+    except Exception as e:
     if not filename:
         return jsonify({"success": False, "message": "No filename provided"}), 400
     
