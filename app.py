@@ -142,9 +142,8 @@ def download_odt():
     from odf.style import Style, TextProperties, ParagraphProperties, GraphicProperties
     from odf.text import P, H, Span
     from odf.draw import Frame, Image
-    try:
-        return send_from_directory(pdf_dir, pdf_filename)
-    except Exception as e:
+    
+    filename = request.json.get("filename", "").strip()
     if not filename:
         return jsonify({"success": False, "message": "No filename provided"}), 400
     
