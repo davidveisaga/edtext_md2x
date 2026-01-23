@@ -9,6 +9,83 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/tui-color-syntax/tui-color-picker.min.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/tui-color-syntax/toastui-editor-plugin-color-syntax.min.css') }}">
   <style>
+    /* Mejorar contraste de fuente - estilo tipo Writer/Word */
+    .toastui-editor,
+    .toastui-editor .ProseMirror,
+    .toastui-editor .CodeMirror {
+      font-family: 'Segoe UI', 'Liberation Sans', Arial, sans-serif !important;
+      font-size: 15px !important;
+      font-weight: 450 !important;
+      color: #000000 !important;
+      -webkit-font-smoothing: antialiased !important;
+      -moz-osx-font-smoothing: grayscale !important;
+    }
+    
+    .ProseMirror {
+      color: #000000 !important;
+      font-weight: 450 !important;
+    }
+    
+    .ProseMirror p,
+    .ProseMirror div,
+    .ProseMirror span:not([class*="highlight"]),
+    .ProseMirror li,
+    .ProseMirror td,
+    .ProseMirror th {
+      color: #000000 !important;
+      font-weight: 450 !important;
+    }
+    
+    .ProseMirror h1,
+    .ProseMirror h2,
+    .ProseMirror h3,
+    .ProseMirror h4,
+    .ProseMirror h5,
+    .ProseMirror h6 {
+      color: #000000 !important;
+      font-weight: 700 !important;
+    }
+    
+    .ProseMirror strong,
+    .ProseMirror b {
+      font-weight: 700 !important;
+      color: #000000 !important;
+    }
+    
+    .ProseMirror code {
+      color: #d63384 !important;
+      background-color: #f8f9fa !important;
+      font-weight: 600 !important;
+    }
+    
+    /* Modo Markdown - CodeMirror */
+    .toastui-editor .CodeMirror {
+      color: #000000 !important;
+      font-weight: 500 !important;
+    }
+    
+    .toastui-editor .CodeMirror-line,
+    .toastui-editor .CodeMirror-line span {
+      color: #000000 !important;
+      font-weight: 500 !important;
+    }
+    
+    .toastui-editor .CodeMirror .cm-header {
+      color: #000000 !important;
+      font-weight: 700 !important;
+    }
+    
+    .toastui-editor .CodeMirror .cm-strong {
+      font-weight: 700 !important;
+      color: #000000 !important;
+    }
+    
+    /* Aumentar el font-weight base del contenedor del editor */
+    .toastui-editor-contents {
+      font-weight: 500 !important;
+      color: #000000 !important;
+    }
+    
     /* Estilos base para resaltado de texto */
     .text-highlight {
       padding: 2px 4px !important;
@@ -178,6 +255,79 @@
       }
 
       const editor = new toastui.Editor(editorConfig);
+      
+      // Inyectar estilos para mayor contraste después de inicializar el editor
+      setTimeout(() => {
+        const styleSheet = document.createElement('style');
+        styleSheet.textContent = `
+          /* Forzar fuente más legible y con mejor contraste */
+          .toastui-editor .ProseMirror {
+            font-family: 'Segoe UI', 'Liberation Sans', Arial, sans-serif !important;
+            font-size: 15px !important;
+            font-weight: 450 !important;
+            color: #000 !important;
+            line-height: 1.6 !important;
+            -webkit-font-smoothing: antialiased !important;
+            -moz-osx-font-smoothing: grayscale !important;
+          }
+          
+          .toastui-editor .ProseMirror * {
+            font-family: inherit !important;
+            color: #000 !important;
+          }
+          
+          .toastui-editor .ProseMirror p {
+            font-weight: 450 !important;
+            color: #000 !important;
+          }
+          
+          .toastui-editor .CodeMirror {
+            font-family: 'Segoe UI', 'Liberation Sans', Arial, sans-serif !important;
+            font-size: 15px !important;
+            font-weight: 450 !important;
+            color: #000 !important;
+            line-height: 1.6 !important;
+          }
+          
+          .toastui-editor .CodeMirror-line {
+            font-weight: 450 !important;
+            color: #000 !important;
+          }
+          
+          .toastui-editor .CodeMirror-line * {
+            font-family: inherit !important;
+            font-weight: inherit !important;
+            color: #000 !important;
+          }
+          
+          .toastui-editor-contents {
+            font-family: 'Segoe UI', 'Liberation Sans', Arial, sans-serif !important;
+            font-size: 15px !important;
+            font-weight: 450 !important;
+            color: #000 !important;
+          }
+        `;
+        document.head.appendChild(styleSheet);
+        
+        // Aplicar estilos directamente al DOM del editor
+        const proseMirror = document.querySelector('.ProseMirror');
+        if (proseMirror) {
+          proseMirror.style.fontFamily = "'Segoe UI', 'Liberation Sans', Arial, sans-serif";
+          proseMirror.style.fontSize = '15px';
+          proseMirror.style.fontWeight = '450';
+          proseMirror.style.color = '#000';
+          proseMirror.style.lineHeight = '1.6';
+        }
+        
+        const codeMirror = document.querySelector('.CodeMirror');
+        if (codeMirror) {
+          codeMirror.style.fontFamily = "'Segoe UI', 'Liberation Sans', Arial, sans-serif";
+          codeMirror.style.fontSize = '15px';
+          codeMirror.style.fontWeight = '450';
+          codeMirror.style.color = '#000';
+          codeMirror.style.lineHeight = '1.6';
+        }
+      }, 500);
 
       // Función para aplicar colores a todos los marks con data-color
       function applyMarkColors() {
