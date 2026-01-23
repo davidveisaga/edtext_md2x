@@ -142,6 +142,7 @@ def download_odt():
     from odf.style import Style, TextProperties, ParagraphProperties, GraphicProperties
     from odf.text import P, H, Span
     from odf.draw import Frame, Image
+    from urllib.parse import urlparse, unquote
     
     filename = request.json.get("filename", "").strip()
     if not filename:

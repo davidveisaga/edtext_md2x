@@ -445,11 +445,64 @@
         }
       }, 500);
 
-      // Agregar el botón al toolbar (después de que se renderice)
+      // Agregar botones personalizados al toolbar (después de que se renderice)
       setTimeout(() => {
         const toolbar = document.querySelector('.toastui-editor-defaultUI-toolbar');
         if (toolbar) {
-          // Crear contenedor para botón y menú
+          // 1. Botón para mostrar/ocultar explorador
+          const toggleExplorerBtn = document.createElement('button');
+          toggleExplorerBtn.type = 'button';
+          toggleExplorerBtn.className = 'toastui-editor-toolbar-icons';
+          toggleExplorerBtn.id = 'toolbarToggleExplorer';
+          toggleExplorerBtn.innerHTML = '📁';
+          toggleExplorerBtn.title = 'Mostrar/Ocultar explorador';
+          toggleExplorerBtn.style.fontSize = '20px';
+          
+          toggleExplorerBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const explorer = document.getElementById('explorer');
+            const isHidden = explorer.style.display === 'none';
+            
+            // Usar la función global setExplorerVisible si existe
+            if (typeof setExplorerVisible === 'function') {
+              setExplorerVisible(isHidden);
+            } else {
+              // Fallback si la función aún no está definida
+              const splitter = document.getElementById('splitter');
+              if (isHidden) {
+                explorer.style.display = '';
+                splitter.style.display = 'flex';
+                toggleExplorerBtn.innerHTML = '📁';
+                toggleExplorerBtn.title = 'Ocultar explorador';
+              } else {
+                explorer.style.display = 'none';
+                splitter.style.display = 'none';
+                toggleExplorerBtn.innerHTML = '📁';
+                toggleExplorerBtn.title = 'Mostrar explorador';
+              }
+            }
+          });
+          
+          // Insertar al principio del toolbar
+          toolbar.insertBefore(toggleExplorerBtn, toolbar.firstChild);
+          
+          // 2. Botón para guardar archivo
+          const saveBtn = document.createElement('button');
+          saveBtn.type = 'button';
+          saveBtn.className = 'toastui-editor-toolbar-icons';
+          saveBtn.innerHTML = '💾';
+          saveBtn.title = 'Guardar archivo';
+          saveBtn.style.fontSize = '20px';
+          
+          saveBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            document.getElementById('saveFile').click();
+          });
+          
+          // Insertar después del botón de explorador
+          toolbar.insertBefore(saveBtn, toggleExplorerBtn.nextSibling);
+          
+          // 3. Crear contenedor para botón de resaltado y menú
           const highlightContainer = document.createElement('div');
           highlightContainer.style.cssText = 'position: relative; display: inline-block;';
           
@@ -919,10 +972,22 @@
         explorer.style.display = '';
         splitter.style.display = '';
         toggleBtn.textContent = 'Ocultar explorador';
+        // Actualizar también el botón del toolbar si existe
+        const toolbarBtn = document.getElementById('toolbarToggleExplorer');
+        if (toolbarBtn) {
+          toolbarBtn.innerHTML = '📁';
+          toolbarBtn.title = 'Ocultar explorador';
+        }
       } else {
         explorer.style.display = 'none';
         splitter.style.display = 'none';
         toggleBtn.textContent = 'Mostrar explorador';
+        // Actualizar también el botón del toolbar si existe
+        const toolbarBtn = document.getElementById('toolbarToggleExplorer');
+        if (toolbarBtn) {
+          toolbarBtn.innerHTML = '📁';
+          toolbarBtn.title = 'Mostrar explorador';
+        }
       }
       try { localStorage.setItem('explorerVisible', visible ? '1' : '0'); } catch(e){}
     }
