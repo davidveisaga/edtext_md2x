@@ -290,8 +290,7 @@
           });
           console.log('Ctrl+clic en enlaces habilitado');
           
-          // Interceptar evento de paste para detectar URLs de PDF
-          // Usar capture: true para interceptar antes que Toast UI
+          // Interceptar evento de paste para detectar URLs y convertirlas en enlaces
           editorEl.addEventListener('paste', (e) => {
             const pastedText = e.clipboardData.getData('text');
             
@@ -299,12 +298,20 @@
             const fileUrlMatch = pastedText.match(/file:\/\/\/([A-Za-z]:\/[^\s]+\.pdf)/i);
             // Detectar si es una URL HTTP/HTTPS con PDF
             const httpUrlMatch = pastedText.match(/(https?:\/\/[^\s]+\.pdf)/i);
+            // Detectar si es una URL HTTP/HTTPS normal (no PDF)
+            const normalUrlMatch = pastedText.match(/^(https?:\/\/[^\s]+)$/i);
+            
+            // Solo interceptar si detectamos alguna URL
+            if (!fileUrlMatch && !httpUrlMatch && !normalUrlMatch) {
+              return; // Dejar que el editor maneje el pegado normal
+            }
+            
+            // Interceptar el pegado para URLs
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
             
             if (fileUrlMatch) {
-              e.preventDefault();
-              e.stopPropagation();
-              e.stopImmediatePropagation();
-              
               // Decodificar la URL
               const encodedPath = fileUrlMatch[1];
               const decodedPath = decodeURIComponent(encodedPath);
@@ -353,10 +360,7 @@
                 console.log('Enlace PDF local insertado:', decodedPath);
               }, 0);
             } else if (httpUrlMatch) {
-              e.preventDefault();
-              e.stopPropagation();
-              e.stopImmediatePropagation();
-              
+              // URL HTTP/HTTPS con PDF
               const pdfUrl = httpUrlMatch[1];
               
               // Usar setTimeout para asegurar que se ejecute después del ciclo de eventos
@@ -396,8 +400,48 @@
                 
                 console.log('Enlace PDF HTTP insertado:', pdfUrl);
               }, 0);
+            } else if (normalUrlMatch) {
+              // URL HTTP/HTTPS normal (no PDF)
+              const url = normalUrlMatch[1];
+              
+              setTimeout(() => {
+                if (editor.isWysiwygMode()) {
+                  const selection = window.getSelection();
+                  if (selection.rangeCount > 0) {
+                    const range = selection.getRangeAt(0);
+                    range.deleteContents();
+                    
+                    // Crear enlace <a> normal para URLs HTTP/HTTPS
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.target = '_blank';
+                    link.style.color = '#0066cc';
+                    link.style.textDecoration = 'underline';
+                    link.textContent = url;
+                    
+                    range.insertNode(link);
+                    
+                    // Agregar espacio después del enlace
+                    const space = document.createTextNode(' ');
+                    range.setStartAfter(link);
+                    range.insertNode(space);
+                    
+                    // Mover cursor después del espacio
+                    range.setStartAfter(space);
+                    range.collapse(true);
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                  }
+                } else {
+                  // En modo Markdown, insertar sintaxis de enlace
+                  const mdLink = `[${url}](${url})`;
+                  editor.insertText(mdLink);
+                }
+                
+                console.log('Enlace HTTP insertado:', url);
+              }, 0);
             }
-          }, true); // true = usar capture phase
+          }, true); // Usar capture: true para interceptar antes que el editor
         }
       }, 500);
 
