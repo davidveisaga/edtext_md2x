@@ -114,6 +114,34 @@
       color: #004499 !important;
       background-color: #f0f8ff !important;
     }
+
+    /* Estilos para spans PDF insertados (data-pdf-path) */
+    .toastui-editor-contents span[data-pdf-path],
+    #editor span[data-pdf-path] {
+      color: #0066cc !important;
+      text-decoration: underline !important;
+      cursor: pointer !important;
+    }
+
+    .toastui-editor-contents span[data-pdf-path]:hover,
+    #editor span[data-pdf-path]:hover {
+      color: #004499 !important;
+      background-color: #f0f8ff !important;
+    }
+
+    /* Estilos para enlaces generales (HTML, http, file) */
+    .toastui-editor-contents a,
+    #editor a {
+      color: #0066cc !important;
+      text-decoration: underline !important;
+      cursor: pointer !important;
+    }
+
+    .toastui-editor-contents a:hover,
+    #editor a:hover {
+      color: #004499 !important;
+      background-color: #f0f8ff !important;
+    }
     
     /* Menú de colores */
     .highlight-color-menu {
@@ -424,18 +452,16 @@
               target = target.parentElement;
             }
             
-            // Ctrl+clic para enlaces normales
-            if (e.ctrlKey || e.metaKey) {
-              target = e.target;
-              for (let i = 0; i < 5 && target; i++) {
-                if (target.tagName === 'A' && target.href && !target.href.startsWith('#')) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  window.open(target.href, '_blank');
-                  return;
-                }
-                target = target.parentElement;
+            // Abrir enlaces <a> en nueva pestaña (click normal o Ctrl+clic)
+            target = e.target;
+            for (let i = 0; i < 5 && target; i++) {
+              if (target.tagName === 'A' && target.href && !target.href.startsWith('#')) {
+                e.preventDefault();
+                e.stopPropagation();
+                window.open(target.href, '_blank');
+                return;
               }
+              target = target.parentElement;
             }
           });
           console.log('Ctrl+clic en enlaces habilitado');

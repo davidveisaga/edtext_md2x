@@ -11,20 +11,32 @@ import re
 
 
 def sanitize_relative_path(rel_path: str) -> str:
-    """Sanitize a relative path by applying secure_filename to each component.
+    """Normalize a user-provided relative path without renaming components.
 
-    Returns normalized relative path (uses '/' as separator) or '' for empty/root.
+    - Collapses repeated separators and dot segments.
+    - Rejects any path that escapes upward ("..") or resolves to root.
+    - Preserves spaces and accents so existing files keep working.
+    Returns normalized relative path using '/' separators, or '' when invalid/empty.
     """
     if not rel_path:
         return ""
-    # normalize separators
+
+    # Normalize separators first so normpath can collapse dot segments
+    rel_path = rel_path.replace('\\', '/')
+    normalized = os.path.normpath(rel_path).replace('\\', '/')
+
+    # Disallow traversal or root-like results
+    if normalized in ("", ".", "..") or normalized.startswith("../"):
+        return ""
+
     parts = []
-    for part in rel_path.replace('\\', '/').split('/'):
-        if not part or part == '.':
+    for part in normalized.split('/'):
+        if part in ("", "."):
             continue
-        safe = secure_filename(part)
-        if safe:
-            parts.append(safe)
+        if part == "..":
+            return ""
+        parts.append(part)
+
     return '/'.join(parts)
 
 app = Flask(__name__)
