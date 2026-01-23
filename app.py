@@ -206,7 +206,7 @@ def download_odt():
             'yellow': '#ffff00',
             'green': '#90EE90',
             'blue': '#ADD8E6',
-            'pink': '#FFB6C1',
+            'gray': '#D3D3D3',
             'orange': '#FFD580',
             'purple': '#DDA0DD'
         }
@@ -257,7 +257,7 @@ def download_odt():
                     # Check if it's a highlight span
                     if 'text-highlight' in class_attr:
                         # Extract color from class like "text-highlight hl-yellow"
-                        for color in ['yellow', 'green', 'blue', 'pink', 'orange', 'purple']:
+                        for color in ['yellow', 'green', 'blue', 'gray', 'orange', 'purple']:
                             if f'hl-{color}' in class_attr:
                                 self.style_stack.append(f'highlight-{color}')
                                 break
