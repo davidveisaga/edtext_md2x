@@ -990,7 +990,16 @@
         editor.setMarkdown(data.content);
         editor.changeMode('wysiwyg');
         applyMarkColors();
-        setCurrentFile(data.name);
+        // Extract just the filename (not the full path) to avoid duplication on save
+        const lastSlash = name.lastIndexOf('/');
+        const justFilename = lastSlash >= 0 ? name.substring(lastSlash + 1) : name;
+        setCurrentFile(justFilename);
+        // Also update currentPath to match the folder the file is in
+        if (lastSlash >= 0) {
+          currentPath = name.substring(0, lastSlash);
+        } else {
+          currentPath = '';
+        }
       } catch (err) {
         alert('Error al cargar archivo: ' + err);
       }
