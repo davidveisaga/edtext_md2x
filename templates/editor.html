@@ -176,6 +176,129 @@
     .color-option:hover {
       border-color: #333;
     }
+    
+    /* Estilos para modal de enlaces internos */
+    .internal-link-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5);
+      z-index: 2000;
+      justify-content: center;
+      align-items: center;
+    }
+    
+    .internal-link-modal.show {
+      display: flex;
+    }
+    
+    .internal-link-modal-content {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      width: 90%;
+      max-width: 500px;
+      max-height: 80vh;
+      overflow-y: auto;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+    
+    .internal-link-modal h2 {
+      margin-top: 0;
+      margin-bottom: 16px;
+      color: #333;
+    }
+    
+    .internal-link-search {
+      margin-bottom: 16px;
+    }
+    
+    .internal-link-search input {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+    
+    .internal-link-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    
+    .internal-link-list li {
+      padding: 10px 12px;
+      border-bottom: 1px solid #eee;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    
+    .internal-link-list li:hover {
+      background-color: #f0f8ff;
+    }
+    
+    .internal-link-list li:last-child {
+      border-bottom: none;
+    }
+    
+    .internal-link-text-input {
+      margin-bottom: 16px;
+    }
+    
+    .internal-link-text-input label {
+      display: block;
+      margin-bottom: 4px;
+      color: #333;
+      font-weight: bold;
+      font-size: 14px;
+    }
+    
+    .internal-link-text-input input {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+    
+    .internal-link-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 16px;
+    }
+    
+    .internal-link-actions button {
+      padding: 8px 16px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      cursor: pointer;
+      background: white;
+      font-size: 14px;
+      transition: background-color 0.2s;
+    }
+    
+    .internal-link-actions button:hover {
+      background-color: #f0f0f0;
+    }
+    
+    .internal-link-actions button.primary {
+      background: #0066cc;
+      color: white;
+      border-color: #0066cc;
+    }
+    
+    .internal-link-actions button.primary:hover {
+      background: #0052a3;
+    }
   </style>
 </head>
 <body style="margin:0; padding:8px;">
@@ -213,6 +336,29 @@
     </div>
   </div>
 
+  <!-- Modal para insertar enlaces internos -->
+  <div id="internalLinkModal" class="internal-link-modal">
+    <div class="internal-link-modal-content">
+      <h2>Insertar enlace a documento</h2>
+      
+      <div class="internal-link-text-input">
+        <label for="linkDisplayText">Texto del enlace:</label>
+        <input type="text" id="linkDisplayText" placeholder="Ej: Ver documento relacionado">
+      </div>
+      
+      <div class="internal-link-search">
+        <input type="text" id="linkSearch" placeholder="Buscar documentos...">
+      </div>
+      
+      <ul id="internalLinkList" class="internal-link-list"></ul>
+      
+      <div class="internal-link-actions">
+        <button id="cancelInternalLink">Cancelar</button>
+        <button id="insertInternalLink" class="primary">Insertar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast UI Editor JS (CDN) -->
   <script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
   <!-- Local Color Picker + Color Syntax plugin JS -->
@@ -223,6 +369,10 @@
     console.log('Toast UI cargado:', !!window.toastui);
   </script>
   <script>
+    // Variables y funciones globales
+    let editor = null;
+    let loadFileQuiet = null; // Se definirá después
+    
     function startEditor() {
       try {
         if (!(window.toastui && toastui.Editor)) {
@@ -285,7 +435,7 @@
         editorConfig.plugins = [colorPlugin];
       }
 
-      const editor = new toastui.Editor(editorConfig);
+      editor = new toastui.Editor(editorConfig);
       
       // Inyectar estilos para mayor contraste después de inicializar el editor
       setTimeout(() => {
@@ -455,13 +605,44 @@
               target = target.parentElement;
             }
             
-            // Abrir enlaces <a> en nueva pestaña (click normal o Ctrl+clic)
+            // Manejar clics en enlaces <a>
             target = e.target;
             for (let i = 0; i < 5 && target; i++) {
               if (target.tagName === 'A' && target.href && !target.href.startsWith('#')) {
+                const href = target.href;
+                const href_pathname = target.pathname;
+                
+                // Verificar si es un enlace interno (archivo .md)
+                if (href.includes('.md')) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  
+                  // Extraer el nombre del archivo del href
+                  // El href podría ser: http://127.0.0.1:5000/ruta/archivo.md
+                  // O el pathname sería: /ruta/archivo.md
+                  let filename = href_pathname.replace(/^\//, ''); // Remover / inicial
+                  
+                  console.log('✓ Enlace interno detectado en editor:', filename);
+                  console.log('  href:', href);
+                  console.log('  pathname:', href_pathname);
+                  
+                  // Cargar el archivo sin confirmación
+                  if (typeof loadFileQuiet === 'function') {
+                    console.log('Llamando a loadFileQuiet para:', filename);
+                    loadFileQuiet(filename);
+                  } else {
+                    console.warn('loadFileQuiet no está disponible, intentando loadFile');
+                    loadFile(filename);
+                  }
+                  
+                  return;
+                }
+                
+                // Para otros enlaces, abrir en nueva pestaña
+                console.log('Enlace externo detectado:', href);
                 e.preventDefault();
                 e.stopPropagation();
-                window.open(target.href, '_blank');
+                window.open(href, '_blank');
                 return;
               }
               target = target.parentElement;
@@ -809,6 +990,52 @@
         }
       }, 500);
 
+      // Agregar botón para insertar enlaces internos
+      setTimeout(() => {
+        const toolbar = document.querySelector('.toastui-editor-defaultUI-toolbar');
+        if (!toolbar) {
+          console.warn('Toolbar no encontrado para agregar botón de enlaces internos');
+          return;
+        }
+        
+        // Crear contenedor para el botón
+        const linkContainer = document.createElement('div');
+        linkContainer.style.cssText = 'position: relative; display: inline-block; margin: 0 4px;';
+        
+        // Crear botón
+        const linkBtn = document.createElement('button');
+        linkBtn.type = 'button';
+        linkBtn.className = 'toastui-editor-toolbar-icons';
+        linkBtn.innerHTML = '🔗';
+        linkBtn.title = 'Insertar enlace interno a documento';
+        linkBtn.style.cssText = `
+          font-size: 18px;
+          cursor: pointer;
+          padding: 4px 8px;
+          background: transparent;
+          border: none;
+          transition: opacity 0.2s;
+        `;
+        
+        linkBtn.addEventListener('mouseover', () => {
+          linkBtn.style.opacity = '0.7';
+        });
+        
+        linkBtn.addEventListener('mouseout', () => {
+          linkBtn.style.opacity = '1';
+        });
+        
+        linkBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openInternalLinkModal();
+        });
+        
+        linkContainer.appendChild(linkBtn);
+        toolbar.appendChild(linkContainer);
+        console.log('Botón de enlace interno agregado al toolbar');
+      }, 1000);
+
       // Configurar hook para subir imágenes
       editor.addHook('addImageBlobHook', async (blob, callback) => {
         const formData = new FormData();
@@ -844,12 +1071,167 @@
 
     // File explorer + load/edit/save
     let currentFile = null; // filename
+    let allDocuments = []; // Para almacenar la lista de documentos
+    let selectedInternalLink = null; // Para almacenar el documento seleccionado
 
     function setCurrentFile(name) {
       currentFile = name;
       const el = document.querySelector('#currentFile');
       if (!name) el.innerHTML = '(archivo: <em>nuevo</em>)';
       else el.innerHTML = '(archivo: <em>' + name + '</em>)';
+    }
+
+    // Funciones para manejar el modal de enlaces internos
+    async function openInternalLinkModal() {
+      console.log('openInternalLinkModal() llamado');
+      // Limpiar campos
+      document.getElementById('linkDisplayText').value = '';
+      document.getElementById('linkSearch').value = '';
+      selectedInternalLink = null;
+      
+      // Cargar lista de documentos
+      await loadDocumentsForLink();
+      
+      // Mostrar modal
+      document.getElementById('internalLinkModal').classList.add('show');
+      
+      // Enfocar en búsqueda
+      setTimeout(() => document.getElementById('linkSearch').focus(), 100);
+    }
+    
+    async function loadDocumentsForLink() {
+      try {
+        const res = await fetch('/files?path=');
+        const data = await res.json();
+        if (!data.success) throw new Error(data.message || 'Error listing files');
+        
+        // Extraer solo archivos .md (recursivamente)
+        allDocuments = [];
+        await extractMarkdownFiles(data.files, '');
+        
+        // Renderizar lista
+        renderInternalLinkList(allDocuments);
+      } catch (err) {
+        console.error('Error al cargar documentos:', err);
+        alert('Error al cargar la lista de documentos');
+      }
+    }
+    
+    async function extractMarkdownFiles(items, basePath) {
+      for (const item of items) {
+        const itemPath = basePath ? (basePath + '/' + item.name) : item.name;
+        if (item.type === 'dir') {
+          // Cargar archivos dentro del directorio
+          try {
+            const res = await fetch('/files?path=' + encodeURIComponent(itemPath));
+            const data = await res.json();
+            if (data.success && data.files) {
+              await extractMarkdownFiles(data.files, itemPath);
+            }
+          } catch (e) {
+            console.error('Error al cargar directorio:', itemPath, e);
+          }
+        } else if (item.name.endsWith('.md')) {
+          allDocuments.push({
+            name: item.name,
+            path: itemPath,
+            displayName: itemPath
+          });
+        }
+      }
+    }
+    
+    function renderInternalLinkList(documents) {
+      const listEl = document.getElementById('internalLinkList');
+      listEl.innerHTML = '';
+      
+      if (documents.length === 0) {
+        const li = document.createElement('li');
+        li.textContent = 'No hay documentos Markdown';
+        li.style.textAlign = 'center';
+        li.style.color = '#999';
+        listEl.appendChild(li);
+        return;
+      }
+      
+      documents.forEach(doc => {
+        const li = document.createElement('li');
+        li.textContent = doc.displayName;
+        li.style.cursor = 'pointer';
+        li.addEventListener('click', () => {
+          selectedInternalLink = doc;
+          // Marcar como seleccionado
+          document.querySelectorAll('#internalLinkList li').forEach(item => {
+            item.style.backgroundColor = '';
+          });
+          li.style.backgroundColor = '#0066cc';
+          li.style.color = 'white';
+        });
+        listEl.appendChild(li);
+      });
+    }
+    
+    function filterInternalLinks(searchText) {
+      const filtered = allDocuments.filter(doc => 
+        doc.displayName.toLowerCase().includes(searchText.toLowerCase())
+      );
+      renderInternalLinkList(filtered);
+    }
+    
+    function closeInternalLinkModal() {
+      document.getElementById('internalLinkModal').classList.remove('show');
+      selectedInternalLink = null;
+    }
+    
+    function insertInternalLink() {
+      console.log('insertInternalLink() llamado');
+      console.log('selectedInternalLink:', selectedInternalLink);
+      console.log('editor:', editor);
+      
+      if (!selectedInternalLink) {
+        alert('Por favor, selecciona un documento');
+        return;
+      }
+      
+      if (!editor) {
+        alert('El editor no está disponible');
+        console.error('editor es null/undefined');
+        return;
+      }
+      
+      let displayText = document.getElementById('linkDisplayText').value.trim();
+      if (!displayText) {
+        displayText = selectedInternalLink.displayName;
+      }
+      
+      console.log('Insertando enlace:', displayText, '->', selectedInternalLink.path);
+      
+      // Insertar enlace en formato Markdown
+      // [texto](archivo.md)
+      const markdown = `[${displayText}](${selectedInternalLink.path})`;
+      
+      try {
+        // Usar la API nativa de Toast UI Editor
+        console.log('Obteniendo contenido actual del editor...');
+        const currentContent = editor.getMarkdown();
+        console.log('Contenido actual:', currentContent.substring(0, 100) + '...');
+        
+        // Agregar nueva línea y el enlace al final
+        const newContent = currentContent + '\n\n' + markdown;
+        console.log('Nuevo contenido a establecer');
+        
+        // Establecer el nuevo contenido
+        editor.setMarkdown(newContent);
+        console.log('Contenido establecido correctamente');
+        
+        // Cerrar modal
+        closeInternalLinkModal();
+        
+        alert('Enlace insertado correctamente');
+      } catch (e) {
+        console.error('Error en insertInternalLink:', e);
+        alert('Error: ' + e.message);
+      }
     }
 
     // currentPath is a relative path inside SAVE_FOLDER ('' = root)
@@ -1004,6 +1386,35 @@
         alert('Error al cargar archivo: ' + err);
       }
     }
+    
+    // Versión sin confirmación para clics en enlaces internos
+    // Usar asignación para hacerla global
+    loadFileQuiet = async function(name) {
+      try {
+        console.log('loadFileQuiet iniciado para:', name);
+        const res = await fetch('/file?name=' + encodeURIComponent(name));
+        const data = await res.json();
+        if (!data.success) throw new Error(data.message || 'Error loading file');
+        console.log('Archivo cargado, actualizando editor');
+        editor.setMarkdown(data.content);
+        editor.changeMode('wysiwyg');
+        applyMarkColors();
+        // Extract just the filename (not the full path) to avoid duplication on save
+        const lastSlash = name.lastIndexOf('/');
+        const justFilename = lastSlash >= 0 ? name.substring(lastSlash + 1) : name;
+        setCurrentFile(justFilename);
+        // Also update currentPath to match the folder the file is in
+        if (lastSlash >= 0) {
+          currentPath = name.substring(0, lastSlash);
+        } else {
+          currentPath = '';
+        }
+        console.log('Archivo cargado exitosamente:', name);
+      } catch (err) {
+        console.error('Error al cargar archivo:', err);
+        alert('Error al cargar archivo: ' + err);
+      }
+    };
 
         document.querySelector('#refreshFiles').addEventListener('click', refreshFiles);
         document.querySelector('#newFile').addEventListener('click', () => {
@@ -1115,6 +1526,39 @@
     }
 
         document.querySelector('#saveFile').addEventListener('click', saveMarkdownFile);
+
+    // Event listeners para el modal de enlaces internos
+    document.getElementById('linkSearch').addEventListener('input', (e) => {
+      filterInternalLinks(e.target.value);
+    });
+    
+    document.getElementById('cancelInternalLink').addEventListener('click', closeInternalLinkModal);
+    
+    document.getElementById('insertInternalLink').addEventListener('click', insertInternalLink);
+    
+    // Cerrar modal al presionar Escape
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const modal = document.getElementById('internalLinkModal');
+        if (modal.classList.contains('show')) {
+          closeInternalLinkModal();
+        }
+      }
+    });
+    
+    // Cerrar modal al hacer clic fuera
+    document.getElementById('internalLinkModal').addEventListener('click', (e) => {
+      if (e.target.id === 'internalLinkModal') {
+        closeInternalLinkModal();
+      }
+    });
+    
+    // Permitir insertar con Enter en el campo de búsqueda si hay un documento seleccionado
+    document.getElementById('linkSearch').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && selectedInternalLink) {
+        insertInternalLink();
+      }
+    });
 
     // Inicializar
         setCurrentFile(null);
@@ -1239,6 +1683,61 @@
         alert('No se pudo cargar Toast UI Editor. Revisa la consola o la conexión.');
       }
     }
+
+    // Event listener global para manejar clics en enlaces internos (.md)
+    document.addEventListener('click', (e) => {
+      let target = e.target;
+      let found = false;
+      
+      // Buscar el elemento <a> más cercano
+      for (let i = 0; i < 10 && target; i++) {
+        if (target.tagName === 'A' && target.href) {
+          found = true;
+          const href = target.href;
+          const pathname = target.pathname;
+          
+          console.log('Click en enlace (global):', { href, pathname });
+          
+          // Verificar si es un enlace .md
+          if (href.includes('.md')) {
+            // Verificar si apunta a localhost o 127.0.0.1 (enlace interno)
+            if (href.includes('localhost') || href.includes('127.0.0.1')) {
+              console.log('✓ Es un enlace interno a .md');
+              
+              // Prevenir comportamiento por defecto
+              e.preventDefault();
+              e.stopPropagation();
+              
+              // Extraer el nombre del archivo del pathname
+              let filename = pathname.replace(/^\//, '');
+              console.log('Archivo a cargar:', filename);
+              
+              // Cargar el archivo sin confirmación
+              if (typeof loadFileQuiet === 'function') {
+                console.log('Llamando a loadFileQuiet desde global listener');
+                loadFileQuiet(filename);
+              } else if (typeof loadFile === 'function') {
+                console.log('loadFileQuiet no disponible, usando loadFile');
+                loadFile(filename);
+              } else {
+                console.warn('Ni loadFile ni loadFileQuiet están disponibles');
+              }
+              return;
+            } else {
+              console.log('✗ Es un enlace .md externo, no es interno');
+            }
+          }
+          
+          // Si no es un enlace interno .md, dejar que se abra normalmente
+          break;
+        }
+        target = target.parentElement;
+      }
+      
+      if (!found) {
+        console.log('No se encontró elemento <a>');
+      }
+    }, true); // Usar captura (true) para interceptar antes que otros handlers
 
     // Iniciar después de que el DOM esté listo
     if (document.readyState === 'loading') {
