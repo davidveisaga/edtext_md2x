@@ -433,8 +433,7 @@ def download_odt():
 def import_odt():
     """Convert ODT file to Markdown content."""
     from odf.opendocument import load
-    from odf.text import P, H, Span
-    from odf.table import Table
+    import zipfile
     
     if "file" not in request.files:
         return jsonify({"success": False, "message": "No file provided"}), 400
@@ -452,51 +451,282 @@ def import_odt():
             tmp_path = tmp.name
             file.save(tmp_path)
         
+        # Extract images from ODT (which is a ZIP file)
+        image_folder = app.config["IMAGE_FOLDER"]
+        os.makedirs(image_folder, exist_ok=True)
+        
+        base_name = secure_filename(os.path.splitext(file.filename)[0])
+        image_counter = 1
+        extracted_images = {}  # Map internal path to extracted filename
+        
+        try:
+            with zipfile.ZipFile(tmp_path, 'r') as zip_ref:
+                print(f"DEBUG: ODT contains these files: {zip_ref.namelist()}")
+                
+                # List all files in the ODT
+                for file_info in zip_ref.filelist:
+                    # Check if it's an image in Pictures folder
+                    if file_info.filename.startswith('Pictures/') and not file_info.is_dir():
+                        # Get extension
+                        _, ext = os.path.splitext(file_info.filename)
+                        ext = ext.lower()
+                        
+                        print(f"DEBUG: Found image file: {file_info.filename} with extension: {ext}")
+                        
+                        # Extract image data
+                        img_data = zip_ref.read(file_info.filename)
+                        
+                        # Try to convert to PNG using PIL
+                        try:
+                            from PIL import Image as PILImage
+                            import io
+                            
+                            # Generate unique filename (always as PNG)
+                            while True:
+                                new_filename = f"{base_name}{image_counter:02d}.png"
+                                new_path = os.path.join(image_folder, new_filename)
+                                if not os.path.exists(new_path):
+                                    break
+                                image_counter += 1
+                            
+                            # Try to open with PIL
+                            try:
+                                img = PILImage.open(io.BytesIO(img_data))
+                                # Convert to RGB if necessary (for formats like RGBA, P, etc.)
+                                if img.mode in ('RGBA', 'LA', 'P'):
+                                    # Create white background
+                                    background = PILImage.new('RGB', img.size, (255, 255, 255))
+                                    if img.mode == 'P':
+                                        img = img.convert('RGBA')
+                                    background.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
+                                    img = background
+                                elif img.mode != 'RGB':
+                                    img = img.convert('RGB')
+                                
+                                # Save as PNG
+                                img.save(new_path, 'PNG')
+                                
+                                # Store mapping
+                                extracted_images[file_info.filename] = new_filename
+                                image_counter += 1
+                                
+                                print(f"DEBUG: Converted and extracted image {file_info.filename} -> {new_filename} ({len(img_data)} bytes)")
+                            
+                            except Exception as e:
+                                print(f"DEBUG: PIL cannot open image {file_info.filename}: {e}")
+                                
+                                # For non-PIL compatible formats (like .svm), try to save raw data
+                                # and add a placeholder in markdown
+                                if ext == '.svm':
+                                    print(f"DEBUG: Skipping .svm format (LibreOffice vector format not supported)")
+                                else:
+                                    # Try to save as-is for other formats
+                                    print(f"DEBUG: Saving raw image data for {file_info.filename}")
+                                    with open(new_path, 'wb') as img_file:
+                                        img_file.write(img_data)
+                                    extracted_images[file_info.filename] = new_filename
+                                    image_counter += 1
+                        
+                        except ImportError:
+                            print(f"DEBUG: PIL not available, saving raw image")
+                            # Fallback: save raw data
+                            new_filename = f"{base_name}{image_counter:02d}{ext}"
+                            new_path = os.path.join(image_folder, new_filename)
+                            with open(new_path, 'wb') as img_file:
+                                img_file.write(img_data)
+                            extracted_images[file_info.filename] = new_filename
+                            image_counter += 1
+                
+                print(f"DEBUG: Extracted {len(extracted_images)} images total")
+        
+        except Exception as e:
+            print(f"DEBUG: Error extracting images: {e}")
+            import traceback
+            traceback.print_exc()
+        
         # Load ODT document
         odt_doc = load(tmp_path)
         
         # Extract text content
         markdown_content = ""
         
-        def extract_text(node):
-            """Extract text content from a node and its children."""
+        def get_text_content(node):
+            """Recursively extract text from all text nodes."""
             text = ""
+            
+            # Add text nodes
             if hasattr(node, 'data'):
-                text += node.data
+                text += str(node.data)
+            
+            # Process children
             if hasattr(node, 'childNodes'):
                 for child in node.childNodes:
-                    text += extract_text(child)
+                    text += get_text_content(child)
+            
             return text
         
-        def extract_elements(nodes, level=0):
-            """Recursively extract elements and convert to Markdown."""
+        def process_nodes(nodes):
+            """Process ODT nodes and convert to Markdown."""
             result = ""
+            
             for node in nodes:
-                # Check node type
-                if isinstance(node, H):
-                    # Heading
-                    heading_level = node.getAttribute('outlinelevel')
-                    try:
-                        heading_level = int(heading_level) if heading_level else 1
-                    except:
-                        heading_level = 1
-                    text = extract_text(node)
-                    if text.strip():
-                        result += ("#" * heading_level) + " " + text.strip() + "\n\n"
-                elif isinstance(node, P):
-                    # Paragraph
-                    text = extract_text(node)
-                    if text.strip():
-                        result += text.strip() + "\n\n"
-                elif hasattr(node, 'childNodes'):
-                    # Node with children - recursively process
-                    result += extract_elements(node.childNodes, level)
+                try:
+                    # Get tag name
+                    tag_name = None
+                    if hasattr(node, 'localName'):
+                        tag_name = node.localName
+                    elif hasattr(node, 'tagName'):
+                        tag_name = node.tagName
+                    
+                    if tag_name:
+                        # Remove namespace prefix if present
+                        if ':' in str(tag_name):
+                            tag_name = str(tag_name).split(':')[-1]
+                        else:
+                            tag_name = str(tag_name)
+                        
+                        print(f"DEBUG: Processing tag: {tag_name}")
+                        
+                        if tag_name == 'p':
+                            # Paragraph - check for images first
+                            has_image = False
+                            if hasattr(node, 'childNodes'):
+                                for child in node.childNodes:
+                                    img_result = check_for_image(child)
+                                    if img_result:
+                                        result += img_result
+                                        has_image = True
+                            
+                            # Then add text if any
+                            text = get_text_content(node).strip()
+                            print(f"DEBUG: Paragraph text: '{text}', has_image: {has_image}")
+                            if text:
+                                result += text + "\n\n"
+                            elif has_image:
+                                # Just add newline after image if no text
+                                pass
+                        
+                        elif tag_name == 'h':
+                            # Heading
+                            outline_level = 1
+                            if hasattr(node, 'getAttribute'):
+                                try:
+                                    level = node.getAttribute('outlinelevel')
+                                    if level:
+                                        outline_level = int(level)
+                                except:
+                                    pass
+                            text = get_text_content(node).strip()
+                            print(f"DEBUG: Heading (level {outline_level}) text: '{text}'")
+                            if text:
+                                result += ("#" * outline_level) + " " + text + "\n\n"
+                        
+                        elif tag_name == 'frame':
+                            # Frame may contain an image
+                            img_result = check_for_image(node)
+                            if img_result:
+                                result += img_result
+                        
+                        elif tag_name in ('list', 'ol', 'ul'):
+                            # List container - process children
+                            if hasattr(node, 'childNodes'):
+                                for child in node.childNodes:
+                                    result += process_nodes([child])
+                        
+                        elif tag_name in ('list-item', 'li'):
+                            # List item
+                            text = get_text_content(node).strip()
+                            print(f"DEBUG: List item text: '{text}'")
+                            if text:
+                                result += "- " + text + "\n"
+                        
+                        else:
+                            # Other elements - try to process children
+                            if hasattr(node, 'childNodes'):
+                                result += process_nodes(list(node.childNodes))
+                    else:
+                        # Text node without tag
+                        if hasattr(node, 'childNodes'):
+                            result += process_nodes(list(node.childNodes))
+                
+                except Exception as e:
+                    print(f"DEBUG: Error processing node: {e}")
+                    import traceback
+                    traceback.print_exc()
+            
             return result
         
-        # Get text from document body
-        body = odt_doc.text
+        def check_for_image(node):
+            """Check if node contains an image and return markdown for it."""
+            result = ""
+            try:
+                tag_name = None
+                if hasattr(node, 'localName'):
+                    tag_name = node.localName
+                elif hasattr(node, 'tagName'):
+                    tag_name = node.tagName
+                
+                if tag_name:
+                    tag_name = str(tag_name).split(':')[-1] if ':' in str(tag_name) else str(tag_name)
+                    
+                    if tag_name == 'image':
+                        # Get image href
+                        href = None
+                        if hasattr(node, 'getAttribute'):
+                            href = node.getAttribute('href')
+                        
+                        print(f"DEBUG: Found image node with href: {href}")
+                        
+                        if href:
+                            if href in extracted_images:
+                                img_filename = extracted_images[href]
+                                img_url = url_for('serve_image', filename=img_filename)
+                                result = f"\n![Imagen]({img_url})\n\n"
+                                print(f"DEBUG: Successfully mapped image {href} -> {img_filename}")
+                            else:
+                                # Image was not extracted (probably .svm format)
+                                result = f"\n*[Imagen no soportada: {href}]*\n\n"
+                                print(f"DEBUG: Image {href} was not extracted (unsupported format)")
+                    
+                    # Check children recursively
+                    if hasattr(node, 'childNodes'):
+                        for child in node.childNodes:
+                            result += check_for_image(child)
+            except Exception as e:
+                print(f"DEBUG: Error checking for image: {e}")
+                import traceback
+                traceback.print_exc()
+            
+            return result
+        
+        # Access document body - try multiple ways
+        body = None
+        
+        # Method 1: Try body attribute
+        if hasattr(odt_doc, 'body'):
+            body = odt_doc.body
+            print("DEBUG: Found body via .body")
+        
+        # Method 2: Try text attribute
+        if not body and hasattr(odt_doc, 'text'):
+            body = odt_doc.text
+            print("DEBUG: Found body via .text")
+        
+        # Method 3: Try getting all elements
+        if not body:
+            body = odt_doc
+            print("DEBUG: Using document as body")
+        
+        # Extract content
         if body and hasattr(body, 'childNodes'):
-            markdown_content = extract_elements(body.childNodes)
+            print(f"DEBUG: Body has {len(body.childNodes)} child nodes")
+            markdown_content = process_nodes(list(body.childNodes))
+        else:
+            print("DEBUG: Body has no childNodes, trying direct processing")
+            markdown_content = process_nodes([body])
+        
+        print(f"DEBUG: Final markdown content length: {len(markdown_content)}")
+        print(f"DEBUG: Final markdown content: '{markdown_content[:200]}'")
         
         # Clean up temporary file
         try:
