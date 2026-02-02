@@ -433,7 +433,7 @@ def download_odt():
 def import_odt():
     """Convert ODT file to Markdown content."""
     from odf.opendocument import load
-    from odf.text import P, H
+    from odf.text import P, H, Span
     from odf.table import Table
     
     if "file" not in request.files:
@@ -458,41 +458,45 @@ def import_odt():
         # Extract text content
         markdown_content = ""
         
-        def extract_text_from_elements(elements, level=0):
-            """Recursively extract text from ODT elements."""
+        def extract_text(node):
+            """Extract text content from a node and its children."""
+            text = ""
+            if hasattr(node, 'data'):
+                text += node.data
+            if hasattr(node, 'childNodes'):
+                for child in node.childNodes:
+                    text += extract_text(child)
+            return text
+        
+        def extract_elements(nodes, level=0):
+            """Recursively extract elements and convert to Markdown."""
             result = ""
-            for element in elements:
-                if element.qname[1] == 'p':
-                    # Paragraph
-                    text = "".join([node.data for node in element.childNodes if hasattr(node, 'data')])
-                    result += text + "\n"
-                elif element.qname[1] == 'h':
+            for node in nodes:
+                # Check node type
+                if isinstance(node, H):
                     # Heading
-                    outline_level = element.getAttribute('outlinelevel')
-                    text = "".join([node.data for node in element.childNodes if hasattr(node, 'data')])
-                    heading_level = int(outline_level) if outline_level else 1
-                    result += ("#" * heading_level) + " " + text + "\n"
-                elif element.qname[1] == 'span':
-                    # Span (text with formatting)
-                    text = "".join([node.data for node in element.childNodes if hasattr(node, 'data')])
-                    result += text
-                elif element.qname[1] == 'list':
-                    # List
-                    for item in element.getElementsByType((element.qname[0], 'list-item')):
-                        item_text = extract_text_from_elements(item.childNodes, level + 1)
-                        result += ("  " * level) + "- " + item_text.strip() + "\n"
-                elif element.qname[1] == 'table':
-                    # Simple table handling
-                    result += "\n| Table |\n| --- |\n\n"
-                elif hasattr(element, 'childNodes'):
-                    # Recursively process child nodes
-                    result += extract_text_from_elements(element.childNodes, level)
+                    heading_level = node.getAttribute('outlinelevel')
+                    try:
+                        heading_level = int(heading_level) if heading_level else 1
+                    except:
+                        heading_level = 1
+                    text = extract_text(node)
+                    if text.strip():
+                        result += ("#" * heading_level) + " " + text.strip() + "\n\n"
+                elif isinstance(node, P):
+                    # Paragraph
+                    text = extract_text(node)
+                    if text.strip():
+                        result += text.strip() + "\n\n"
+                elif hasattr(node, 'childNodes'):
+                    # Node with children - recursively process
+                    result += extract_elements(node.childNodes, level)
             return result
         
         # Get text from document body
         body = odt_doc.text
-        if body:
-            markdown_content = extract_text_from_elements(body.childNodes)
+        if body and hasattr(body, 'childNodes'):
+            markdown_content = extract_elements(body.childNodes)
         
         # Clean up temporary file
         try:
@@ -502,7 +506,7 @@ def import_odt():
         
         return jsonify({
             "success": True, 
-            "content": markdown_content,
+            "content": markdown_content.strip(),
             "filename": os.path.splitext(file.filename)[0] + ".md"
         })
         
@@ -511,7 +515,11 @@ def import_odt():
             os.unlink(tmp_path)
         except:
             pass
+        import traceback
+        print(f"Error importing ODT: {str(e)}")
+        print(traceback.format_exc())
         return jsonify({"success": False, "message": f"Error processing ODT: {str(e)}"}), 500
+
 
 
 @app.route("/upload_image", methods=["POST"])
