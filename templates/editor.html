@@ -616,6 +616,18 @@
                 const href = target.href;
                 const href_pathname = target.pathname;
                 
+                // Verificar si es una URL externa (http:// o https://)
+                const isExternalUrl = href.startsWith('http://') || href.startsWith('https://');
+                
+                // Si es una URL externa y NO contiene el dominio local, abrir en nueva pestaña directamente
+                if (isExternalUrl && !href.includes('127.0.0.1') && !href.includes('localhost')) {
+                  console.log('✓ Enlace externo detectado:', href);
+                  e.preventDefault();
+                  e.stopPropagation();
+                  window.open(href, '_blank');
+                  return;
+                }
+                
                 // Verificar si es un enlace interno (archivo .md)
                 if (href.includes('.md')) {
                   e.preventDefault();
@@ -642,8 +654,8 @@
                   return;
                 }
                 
-                // Para otros enlaces, abrir en nueva pestaña
-                console.log('Enlace externo detectado:', href);
+                // Para otros enlaces locales, abrir en nueva pestaña
+                console.log('Enlace local detectado:', href);
                 e.preventDefault();
                 e.stopPropagation();
                 window.open(href, '_blank');
