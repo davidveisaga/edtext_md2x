@@ -311,6 +311,7 @@
           <button id="newFile">Nuevo archivo</button>
           <button id="createDir">Crear carpeta</button>
           <button id="downloadOdt" title="Descargar el archivo actual como ODT">Descargar ODT</button>
+          <button id="importOdt" title="Importar archivo ODT y convertirlo a Markdown">Importar ODT</button>
         </div>
         <div id="breadcrumb" style="margin-top:8px; font-size:0.95em; color:#333;"></div>
         <ul id="fileList" style="list-style:none; padding-left:0; margin-top:8px;"></ul>
@@ -358,6 +359,9 @@
       </div>
     </div>
   </div>
+
+  <!-- Input oculto para importar ODT -->
+  <input type="file" id="odtFileInput" accept=".odt" style="display: none;">
 
   <!-- Toast UI Editor JS (CDN) -->
   <script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
@@ -1480,7 +1484,73 @@
           }
         });
 
-    // Guardar archivo: si currentFile existe, lo sobreescribe; si no, pide nombre
+        document.querySelector('#importOdt').addEventListener('click', async () => {
+          // Trigger file input
+          document.getElementById('odtFileInput').click();
+        });
+
+        // Handle file selection for ODT import
+        document.getElementById('odtFileInput').addEventListener('change', async (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+
+          const formData = new FormData();
+          formData.append('file', file);
+
+          try {
+            const res = await fetch('/import_odt', {
+              method: 'POST',
+              body: formData
+            });
+
+            if (!res.ok) {
+              const error = await res.json();
+              alert('Error: ' + (error.message || 'No se pudo importar el ODT'));
+              return;
+            }
+
+            const data = await res.json();
+            if (!data.success) {
+              alert('Error: ' + (data.message || 'No se pudo importar el ODT'));
+              return;
+            }
+
+            // Set the markdown content in the editor
+            editor.setMarkdown(data.content);
+            editor.changeMode('wysiwyg');
+            applyMarkColors();
+
+            // Ask if user wants to save the file
+            const suggestedName = data.filename || 'imported.md';
+            const shouldSave = confirm(`¿Guardar el archivo importado como "${suggestedName}"?`);
+            
+            if (shouldSave) {
+              const filename = prompt('Nombre del archivo (ej: nota.md):', suggestedName);
+              if (filename) {
+                const savePath = (currentPath ? (currentPath + '/' + filename) : filename);
+                const saveRes = await fetch('/save', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ content: data.content, filename: savePath })
+                });
+                const saveResult = await saveRes.json();
+                if (saveResult.success) {
+                  alert('Archivo importado y guardado en: ' + saveResult.path);
+                  setCurrentFile(savePath);
+                  refreshFiles();
+                } else {
+                  alert('Error al guardar: ' + (saveResult.message || JSON.stringify(saveResult)));
+                }
+              }
+            }
+
+            // Clear the file input
+            e.target.value = '';
+          } catch (err) {
+            alert('Error al importar ODT: ' + err);
+            e.target.value = '';
+          }
+        });
     async function saveMarkdownFile() {
       const md = editor.getMarkdown();
       let filename = currentFile;

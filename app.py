@@ -428,6 +428,92 @@ def download_odt():
                 pass
         return jsonify({"success": False, "message": f"Error: {str(e)}"}), 500
 
+
+@app.route("/import_odt", methods=["POST"])
+def import_odt():
+    """Convert ODT file to Markdown content."""
+    from odf.opendocument import load
+    from odf.text import P, H
+    from odf.table import Table
+    
+    if "file" not in request.files:
+        return jsonify({"success": False, "message": "No file provided"}), 400
+    
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"success": False, "message": "No file selected"}), 400
+    
+    if not file.filename.lower().endswith('.odt'):
+        return jsonify({"success": False, "message": "File must be .odt format"}), 400
+    
+    try:
+        # Save temporarily
+        with tempfile.NamedTemporaryFile(mode='wb', suffix='.odt', delete=False) as tmp:
+            tmp_path = tmp.name
+            file.save(tmp_path)
+        
+        # Load ODT document
+        odt_doc = load(tmp_path)
+        
+        # Extract text content
+        markdown_content = ""
+        
+        def extract_text_from_elements(elements, level=0):
+            """Recursively extract text from ODT elements."""
+            result = ""
+            for element in elements:
+                if element.qname[1] == 'p':
+                    # Paragraph
+                    text = "".join([node.data for node in element.childNodes if hasattr(node, 'data')])
+                    result += text + "\n"
+                elif element.qname[1] == 'h':
+                    # Heading
+                    outline_level = element.getAttribute('outlinelevel')
+                    text = "".join([node.data for node in element.childNodes if hasattr(node, 'data')])
+                    heading_level = int(outline_level) if outline_level else 1
+                    result += ("#" * heading_level) + " " + text + "\n"
+                elif element.qname[1] == 'span':
+                    # Span (text with formatting)
+                    text = "".join([node.data for node in element.childNodes if hasattr(node, 'data')])
+                    result += text
+                elif element.qname[1] == 'list':
+                    # List
+                    for item in element.getElementsByType((element.qname[0], 'list-item')):
+                        item_text = extract_text_from_elements(item.childNodes, level + 1)
+                        result += ("  " * level) + "- " + item_text.strip() + "\n"
+                elif element.qname[1] == 'table':
+                    # Simple table handling
+                    result += "\n| Table |\n| --- |\n\n"
+                elif hasattr(element, 'childNodes'):
+                    # Recursively process child nodes
+                    result += extract_text_from_elements(element.childNodes, level)
+            return result
+        
+        # Get text from document body
+        body = odt_doc.text
+        if body:
+            markdown_content = extract_text_from_elements(body.childNodes)
+        
+        # Clean up temporary file
+        try:
+            os.unlink(tmp_path)
+        except:
+            pass
+        
+        return jsonify({
+            "success": True, 
+            "content": markdown_content,
+            "filename": os.path.splitext(file.filename)[0] + ".md"
+        })
+        
+    except Exception as e:
+        try:
+            os.unlink(tmp_path)
+        except:
+            pass
+        return jsonify({"success": False, "message": f"Error processing ODT: {str(e)}"}), 500
+
+
 @app.route("/upload_image", methods=["POST"])
 def upload_image():
     if "file" not in request.files:
