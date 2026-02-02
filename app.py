@@ -855,6 +855,9 @@ def list_files():
 
     # support optional path param to navigate directories
     req_path = request.args.get('path', '')
+    # support optional sort param: 'name' or 'date' (default: 'date')
+    sort_by = request.args.get('sort', 'date')
+    
     rel = sanitize_relative_path(req_path)
     target = os.path.join(save_folder, *rel.split('/')) if rel else save_folder
 
@@ -881,8 +884,12 @@ def list_files():
     except FileNotFoundError:
         return jsonify({"success": False, "message": "Path not found"}), 404
 
-    # sort: dirs first, then files, both by mtime desc
-    entries.sort(key=lambda x: (0 if x["type"] == "dir" else 1, -x.get("mtime", 0)))
+    # sort: dirs first, then files
+    # secondary sort: by name (case-insensitive) or by mtime desc
+    if sort_by == 'name':
+        entries.sort(key=lambda x: (0 if x["type"] == "dir" else 1, x["name"].lower()))
+    else:  # default: sort by date
+        entries.sort(key=lambda x: (0 if x["type"] == "dir" else 1, -x.get("mtime", 0)))
 
     parent = ''
     if rel:

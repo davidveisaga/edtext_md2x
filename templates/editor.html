@@ -361,6 +361,10 @@
             <button id="downloadOdt" title="Descargar el archivo actual como ODT">Descargar ODT</button>
             <button id="importOdt" title="Importar archivo ODT y convertirlo a Markdown">Importar ODT</button>
           </div>
+          <div style="margin-top:8px; display:flex; gap:4px;">
+            <button id="sortByDate" style="font-size:0.85em; padding:4px 8px; background:#e0e0e0; border:1px solid #999; cursor:pointer; border-radius:3px;">Por fecha</button>
+            <button id="sortByName" style="font-size:0.85em; padding:4px 8px; background:#fff; border:1px solid #ccc; cursor:pointer; border-radius:3px;">Por nombre</button>
+          </div>
           <div id="breadcrumb" style="margin-top:8px; font-size:0.95em; color:#333;"></div>
           <ul id="fileList" style="list-style:none; padding-left:0; margin-top:8px;"></ul>
       </aside>
@@ -1331,12 +1335,16 @@
 
     // currentPath is a relative path inside SAVE_FOLDER ('' = root)
     let currentPath = '';
+    // currentSort stores the current sort mode: 'date' or 'name'
+    let currentSort = 'date';
 
     async function refreshFiles() {
       const ul = document.querySelector('#fileList');
       ul.innerHTML = '<li>Cargando...</li>';
       try {
-        const q = currentPath ? '?path=' + encodeURIComponent(currentPath) : '';
+        const pathParam = currentPath ? 'path=' + encodeURIComponent(currentPath) : '';
+        const sortParam = 'sort=' + currentSort;
+        const q = pathParam ? ('?' + pathParam + '&' + sortParam) : ('?' + sortParam);
         const res = await fetch('/files' + q);
         const data = await res.json();
         if (!data.success) throw new Error(data.message || 'Error listing files');
@@ -1559,6 +1567,27 @@
         alert('Error al cargar archivo: ' + err);
       }
     };
+
+        // Event listeners para botones de ordenamiento
+        document.querySelector('#sortByDate').addEventListener('click', () => {
+          currentSort = 'date';
+          // Actualizar estilos de botones
+          document.querySelector('#sortByDate').style.background = '#e0e0e0';
+          document.querySelector('#sortByDate').style.borderColor = '#999';
+          document.querySelector('#sortByName').style.background = '#fff';
+          document.querySelector('#sortByName').style.borderColor = '#ccc';
+          refreshFiles();
+        });
+        
+        document.querySelector('#sortByName').addEventListener('click', () => {
+          currentSort = 'name';
+          // Actualizar estilos de botones
+          document.querySelector('#sortByName').style.background = '#e0e0e0';
+          document.querySelector('#sortByName').style.borderColor = '#999';
+          document.querySelector('#sortByDate').style.background = '#fff';
+          document.querySelector('#sortByDate').style.borderColor = '#ccc';
+          refreshFiles();
+        });
 
         document.querySelector('#refreshFiles').addEventListener('click', refreshFiles);
         document.querySelector('#newFile').addEventListener('click', () => {
