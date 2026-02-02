@@ -1372,11 +1372,10 @@
         editor.setMarkdown(data.content);
         editor.changeMode('wysiwyg');
         applyMarkColors();
-        // Extract just the filename (not the full path) to avoid duplication on save
-        const lastSlash = name.lastIndexOf('/');
-        const justFilename = lastSlash >= 0 ? name.substring(lastSlash + 1) : name;
-        setCurrentFile(justFilename);
+        // Store the full path in currentFile for use in save and download operations
+        setCurrentFile(name);
         // Also update currentPath to match the folder the file is in
+        const lastSlash = name.lastIndexOf('/');
         if (lastSlash >= 0) {
           currentPath = name.substring(0, lastSlash);
         } else {
@@ -1399,11 +1398,10 @@
         editor.setMarkdown(data.content);
         editor.changeMode('wysiwyg');
         applyMarkColors();
-        // Extract just the filename (not the full path) to avoid duplication on save
-        const lastSlash = name.lastIndexOf('/');
-        const justFilename = lastSlash >= 0 ? name.substring(lastSlash + 1) : name;
-        setCurrentFile(justFilename);
+        // Store the full path in currentFile for use in save and download operations
+        setCurrentFile(name);
         // Also update currentPath to match the folder the file is in
+        const lastSlash = name.lastIndexOf('/');
         if (lastSlash >= 0) {
           currentPath = name.substring(0, lastSlash);
         } else {
@@ -1501,10 +1499,13 @@
         if (!filename.includes('.')) {
           filename = filename + '.md';
         }
+        
+        // if user provided a simple name and currentPath is set, save inside that folder
+        filename = (currentPath ? (currentPath + '/' + filename) : filename);
       }
 
-      // if user provided a simple name and currentPath is set, save inside that folder
-      const saveName = (currentPath ? (currentPath + '/' + filename) : filename);
+      // filename now contains the full path (including subdirectories)
+      const saveName = filename;
       const body = { content: md, filename: saveName };
       try {
         const res = await fetch('/save', {
